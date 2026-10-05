@@ -847,11 +847,14 @@ if (D.notes.length) $("notes").innerHTML = '<div class="notes"><strong>Data note
 const TOP = C.leverage[C.leverage.length - 1];
 const backfilled = A.filter((a) => D.assets[a].proxy);
 const shadeEnd = backfilled.map((a) => D.assets[a].etf_start).sort().pop();
+const ZOOM_HINT = matchMedia("(pointer: coarse)").matches ? "" : " Drag across a chart to zoom in on a period or range; double-click it to reset.";
 const legendHtml = () => A.map((a) => '<span><i class="line" style="background:var(' + COLOR[a] + ')"></i>' + a + "</span>").join("") +
   '<div class="btns" role="group" aria-label="Time range">' + [["1Y", 1], ["5Y", 5], ["10Y", 10], ["All", 0]].map(([t, y]) =>
     '<button data-y="' + y + '" aria-pressed="' + (y === 0) + '">' + t + "</button>").join("") + "</div>";
 const shadeNote = () => backfilled.length ? "The shaded era is backfilled from mutual funds (" +
-  backfilled.map((a) => a + " before " + D.assets[a].etf_start).join(", ") + ") and is approximate; see the caveats below. Weekly samples." : "Weekly samples.";
+  backfilled.map((a) => a + " before " + D.assets[a].etf_start).join(", ") + ") and is approximate; see the caveats below. Weekly samples." + ZOOM_HINT : "Weekly samples." + ZOOM_HINT;
+// Drag-to-zoom needs a mouse or trackpad; on touch screens a drag has to scroll the page.
+const CAN_ZOOM = !matchMedia("(pointer: coarse)").matches;
 let years = 0;
 function xRange() {
   const d = D.series.dates, end = d[d.length - 1];
@@ -880,10 +883,10 @@ function plotLines(id, c, get) {
     margin: { l: 46, r: 12, t: 8, b: 26 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", showlegend: false,
     hovermode: "x unified", hoverlabel: { bgcolor: css("--surface"), bordercolor: axis, font: { color: css("--ink"), size: 12 } },
     font: { family: 'system-ui,-apple-system,"Segoe UI",sans-serif', size: 11, color: ink2 },
-    xaxis: { range: [x0, x1], showgrid: false, linecolor: axis, tickcolor: axis, fixedrange: true },
-    yaxis: { range: [lo - pad, hi + pad], gridcolor: grid, zeroline: false, ticksuffix: c.pct ? "%" : "", fixedrange: true },
-    shapes,
-  }, { displayModeBar: false, responsive: true });
+    xaxis: { range: [x0, x1], showgrid: false, linecolor: axis, tickcolor: axis, fixedrange: !CAN_ZOOM },
+    yaxis: { range: [lo - pad, hi + pad], gridcolor: grid, zeroline: false, ticksuffix: c.pct ? "%" : "", fixedrange: !CAN_ZOOM },
+    dragmode: CAN_ZOOM ? "zoom" : false, shapes,
+  }, { displayModeBar: false, responsive: true, doubleClick: "reset" });
 }
 function bindRange(draw) {
   document.querySelectorAll(".btns button").forEach((b) => b.addEventListener("click", () => {
@@ -1233,6 +1236,7 @@ const OPTS = M.map((m) => ({ key: m.key, label: m.label, pct: m.fmt === "pct", h
     { key: "net_" + L + "x", label: L + "x simulated return after costs, trailing year", pct: true, zero: 0 },
   ]));
 $("sel").innerHTML = OPTS.map((o, i) => '<option value="' + i + '">' + o.label + "</option>").join("");
+$("sel").value = String(OPTS.findIndex((o) => o.key === "score"));
 $("legend").innerHTML = legendHtml();
 $("shade-note").textContent = shadeNote();
 let showP = false;
