@@ -1,0 +1,956 @@
+#!/usr/bin/env python3
+"""
+Leverage-environment dashboard for SPY, EFA and EEM.
+
+Builds one self-contained HTML page (plus a small JSON/CSV record) that tracks
+momentum, volatility, serial correlation and breadth for each ETF, ranks every
+reading against that ETF's own history, and simulates how daily-reset 2x / 3x
+exposure has actually compounded. The methodology and every known caveat are
+written into the page itself.
+
+    python dashboard.py --out site               # live data from Yahoo Finance
+    python dashboard.py --out site --synthetic   # made-up data, for offline testing
+
+Designed to run unattended once per trading day (see .github/workflows/daily.yml).
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import datetime as dt
+import json
+import math
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+# --------------------------------------------------------------------------- #
+# Configuration - everything you might want to tune lives here
+# --------------------------------------------------------------------------- #
+
+FETCH_START = "1995-01-01"     # earliest data requested (gives windows time to warm up)
+HISTORY_START = "1998-01-01"   # earliest date used for percentile ranking and charts
+TRADING_DAYS = 252
+
+MOM_SHORT, MOM_LONG = 21, 252  # 1-month and 12-month momentum, in trading days
+VOL_SHORT, VOL_LONG = 20, 60   # realized-volatility windows
+SC_WINDOW = 252                # window for autocorrelation and variance ratios
+VR_HORIZONS = (5, 10, 20)      # variance-ratio horizons, in days
+MIN_RANK_OBS = 504             # observations required before a percentile is reported
+
+LEVERAGE = (2, 3)
+FINANCING_SPREAD = 0.005       # added to the T-bill rate on the borrowed portion
+EXPENSE_RATIO = 0.0095         # typical leveraged-ETF annual fee
+FALLBACK_CASH_RATE = 0.04      # used only if the T-bill series cannot be fetched
+CASH_TICKER = "^IRX"           # 13-week T-bill yield, in percent
+
+BREADTH_MIN_MEMBERS = 5        # components needed before breadth is reported
+NEAR_HIGH = 0.97               # "near its high" = within 3% of the 252-day high
+BREADTH_DROP = 0.10            # breadth fall over 63 days that counts as narrowing
+
+# Composite score (a heuristic, see the page's methodology section).
+SCORE_WEIGHTS = {"momentum": 0.40, "volatility": 0.40, "serial_corr": 0.20}
+FAVORABLE_AT, HOSTILE_AT = 60.0, 40.0
+BACKTEST_HORIZON = 63
+
+DEFAULT_EUROPE_WEIGHT = 0.70   # used only if the blend weight cannot be fitted
+
+# Breadth components and APPROXIMATE, STATIC index weights (percent). The weights
+# are rough present-day figures applied to all of history; update them from the
+# fund providers' fact sheets if you rely on the weighted breadth reading.
+ASSETS = {
+    "SPY": {
+        "name": "US large cap",
+        "index": "S&P 500",
+        "proxy": None,
+        "breadth_kind": "sector ETFs",
+        "breadth": {"XLK": 33, "XLF": 13.5, "XLY": 10.5, "XLC": 10, "XLV": 9.5,
+                    "XLI": 8.5, "XLP": 5.5, "XLE": 3, "XLU": 2.5, "XLRE": 2, "XLB": 2},
+    },
+    "EFA": {
+        "name": "Developed ex-US",
+        "index": "MSCI EAFE",
+        "proxy": ("VEURX", "VPACX"),      # Europe + Pacific blend, weight fitted
+        "breadth_kind": "country ETFs",
+        "breadth": {"EWJ": 22, "EWU": 15, "EWQ": 11, "EWG": 10, "EWL": 9.5, "EWA": 7,
+                    "EWN": 5, "EWD": 3.5, "EWP": 3.5, "EWI": 3, "EDEN": 2.5, "EWH": 2,
+                    "EWS": 1.7, "EFNL": 1, "EWK": 1, "EIS": 1, "ENOR": 0.7,
+                    "EIRL": 0.3, "EWO": 0.2, "ENZL": 0.2},
+    },
+    "EEM": {
+        "name": "Emerging markets",
+        "index": "MSCI Emerging Markets",
+        "proxy": ("VEIEX",),
+        "breadth_kind": "country ETFs",
+        "breadth": {"FXI": 28, "EWT": 19, "INDA": 17, "EWY": 12, "EWZ": 4.5, "KSA": 3.5,
+                    "EZA": 3.5, "EWW": 2, "UAE": 1.5, "EWM": 1.3, "EIDO": 1.2,
+                    "EPOL": 1, "THD": 1, "KWT": 0.7, "QAT": 0.7, "TUR": 0.5,
+                    "GREK": 0.5, "ECH": 0.5, "EPHE": 0.4, "EPU": 0.3},
+    },
+}
+CORE = list(ASSETS)
+
+# (key, label, display format, True if a HIGHER reading is better for leverage)
+METRICS = [
+    ("mom_1m", "1-month momentum", "pct", True),
+    ("mom_12m", "12-month momentum", "pct", True),
+    ("vol_20", "Volatility, 20-day", "pct", False),
+    ("vol_60", "Volatility, 60-day", "pct", False),
+    ("ac1", "Lag-1 autocorrelation, 1-year", "num", True),
+    ("vr5", "Variance ratio, 5-day", "num", True),
+    ("vr10", "Variance ratio, 10-day", "num", True),
+    ("vr20", "Variance ratio, 20-day", "num", True),
+    ("b12", "Breadth: components up over 12 months", "pct", True),
+    ("b1", "Breadth: components up over 1 month", "pct", True),
+]
+SERIAL_KEYS = ("ac1", "vr5", "vr10", "vr20")
+
+
+# --------------------------------------------------------------------------- #
+# Metric functions (pure; covered by tests/test_metrics.py)
+# --------------------------------------------------------------------------- #
+
+def momentum(price: pd.Series, days: int) -> pd.Series:
+    """Total return over the last `days` trading days of an adjusted price series."""
+    return price / price.shift(days) - 1.0
+
+
+def realized_vol(ret: pd.Series, days: int) -> pd.Series:
+    """Annualized standard deviation of daily returns over a rolling window."""
+    return ret.rolling(days).std() * math.sqrt(TRADING_DAYS)
+
+
+def rolling_autocorr(ret: pd.Series, window: int) -> pd.Series:
+    """Rolling correlation between each day's return and the previous day's."""
+    return ret.rolling(window).corr(ret.shift(1))
+
+
+def variance_ratio(log_ret: pd.Series, q: int, window: int) -> pd.Series:
+    """Var(q-day return) / (q * Var(1-day return)) over a rolling window.
+
+    1.0 is a random walk, above 1 means returns trend, below 1 means they
+    mean-revert. Uses overlapping q-day returns.
+    """
+    q_ret = log_ret.rolling(q).sum()
+    return q_ret.rolling(window).var() / (q * log_ret.rolling(window).var())
+
+
+def expanding_percentile(s: pd.Series, min_obs: int = MIN_RANK_OBS) -> pd.Series:
+    """Percentile (0-100) of each value against all values up to and including it.
+
+    Point-in-time by construction: no later data is used, so the same function
+    serves both today's reading and the backtest.
+    """
+    return s.dropna().expanding(min_periods=min_obs).rank(pct=True).reindex(s.index) * 100.0
+
+
+def compound(ret: pd.Series, days: int) -> pd.Series:
+    """Compounded return over a rolling window of daily returns."""
+    return np.expm1(np.log1p(ret.clip(lower=-0.999)).rolling(days).sum())
+
+
+def leveraged_returns(ret: pd.Series, lev: float, cash_rate: pd.Series | float = 0.0,
+                      spread: float = 0.0, fee: float = 0.0) -> pd.Series:
+    """Daily returns of a fund that resets to `lev` times exposure every day.
+
+    The borrowed (lev - 1) portion pays the cash rate plus a spread; `fee` is
+    the annual expense ratio. Rates are annual decimals.
+    """
+    cost = ((lev - 1) * (cash_rate + spread) + fee) / TRADING_DAYS
+    return lev * ret - cost
+
+
+def vol_drag(vol: float, lev: float) -> float:
+    """Approximate annual return lost to volatility versus lev x the unlevered return."""
+    return lev * (lev - 1) / 2.0 * vol ** 2
+
+
+def breadth(component_px: pd.DataFrame, weights: dict, days: int,
+            min_members: int = BREADTH_MIN_MEMBERS) -> pd.DataFrame:
+    """Share of components with a positive `days`-day return: equal- and index-weighted."""
+    mom = component_px / component_px.shift(days) - 1.0
+    have = mom.notna()
+    up = (mom > 0) & have
+    n = have.sum(axis=1)
+    w = pd.Series(weights, dtype=float).reindex(mom.columns).fillna(0.0)
+    eq = (up.sum(axis=1) / n).where(n >= min_members)
+    wt = (up.mul(w, axis=1).sum(axis=1) / have.mul(w, axis=1).sum(axis=1)).where(n >= min_members)
+    return pd.DataFrame({"equal": eq, "weighted": wt, "n": n})
+
+
+def fit_blend_weight(target: pd.Series, a: pd.Series, b: pd.Series, years: int = 5):
+    """Weight on `a` (rest on `b`) whose monthly returns best match `target`.
+
+    Fitted on monthly returns so that stale daily pricing in the proxies does not
+    distort it. Returns (weight, correlation of the fitted blend with the target).
+    """
+    m = pd.concat({"t": target, "a": a, "b": b}, axis=1).dropna()
+    m = m.resample("ME").last().pct_change(fill_method=None).dropna().iloc[: years * 12]
+    if len(m) < 24:
+        return DEFAULT_EUROPE_WEIGHT, float("nan")
+    grid = np.linspace(0, 1, 101)
+    err = [float(((w * m["a"] + (1 - w) * m["b"] - m["t"]) ** 2).sum()) for w in grid]
+    w = float(grid[int(np.argmin(err))])
+    return w, float(np.corrcoef(w * m["a"] + (1 - w) * m["b"], m["t"])[0, 1])
+
+
+def splice(etf_px: pd.Series, proxy_ret: pd.Series | None) -> pd.Series:
+    """Price series that follows the ETF once it exists and the proxy's returns before."""
+    start = etf_px.first_valid_index()
+    r = etf_px.pct_change(fill_method=None)
+    if proxy_ret is not None:
+        r = r.where(r.index > start, proxy_ret)
+    first = r.first_valid_index()
+    if first is None:
+        return etf_px
+    level = (1.0 + r.fillna(0.0)).cumprod()
+    level.iloc[: max(r.index.get_loc(first) - 1, 0)] = np.nan   # nothing before the first base price
+    return level * (etf_px.dropna().iloc[-1] / level.iloc[-1])
+
+
+# --------------------------------------------------------------------------- #
+# Data
+# --------------------------------------------------------------------------- #
+
+def all_tickers() -> list[str]:
+    t = list(CORE)
+    for a in ASSETS.values():
+        t += list(a["proxy"] or ()) + list(a["breadth"])
+    return list(dict.fromkeys(t)) + [CASH_TICKER]
+
+
+def _closes(raw: pd.DataFrame, tickers: list[str]) -> pd.DataFrame:
+    if raw is None or raw.empty:
+        return pd.DataFrame()
+    if isinstance(raw.columns, pd.MultiIndex):
+        level0 = raw.columns.get_level_values(0)
+        close = raw["Close"] if "Close" in level0 else raw.xs("Close", axis=1, level=1)
+    else:
+        close = raw[["Close"]].rename(columns={"Close": tickers[0]})
+    close.index = pd.DatetimeIndex(close.index).tz_localize(None).normalize()
+    return close.dropna(how="all", axis=1)
+
+
+def fetch_live(tickers: list[str], notes: list[str]) -> pd.DataFrame:
+    """Dividend- and split-adjusted daily closes from Yahoo Finance, with retries."""
+    import yfinance as yf
+
+    out = pd.DataFrame()
+    missing = list(tickers)
+    for attempt in range(4):
+        if not missing:
+            break
+        if attempt:
+            time.sleep(15 * attempt)
+        try:
+            raw = yf.download(missing, start=FETCH_START, auto_adjust=True,
+                              progress=False, threads=True, group_by="column")
+            got = _closes(raw, missing)
+        except Exception as exc:  # network / rate-limit errors: retry
+            print(f"fetch attempt {attempt + 1} failed: {exc}", file=sys.stderr)
+            continue
+        got = got[[c for c in got.columns if got[c].notna().sum() > 30]]
+        out = got if out.empty else out.join(got, how="outer")
+        missing = [t for t in missing if t not in out.columns]
+    if missing:
+        notes.append("No data returned for: " + ", ".join(sorted(missing)) + ".")
+
+    # Drop today's bar if the US market has not closed yet (it would be partial).
+    try:
+        from zoneinfo import ZoneInfo
+        now = dt.datetime.now(ZoneInfo("America/New_York"))
+        if len(out) and out.index[-1].date() == now.date() and now.time() < dt.time(16, 20):
+            out = out.iloc[:-1]
+            notes.append("Today's bar was dropped because the US market had not closed.")
+    except Exception:
+        pass
+    return out.sort_index()
+
+
+# Approximate first-trade dates, used ONLY to shape the synthetic test data.
+_SYN_START = {"SPY": "1993-01-29", "EFA": "2001-08-27", "EEM": "2003-04-14",
+              "VEIEX": "1994-05-04", "VEURX": "1990-06-18", "VPACX": "1990-06-18",
+              "XLRE": "2015-10-08", "XLC": "2018-06-19", "EWT": "2000-06-23",
+              "EWY": "2000-05-12", "EWZ": "2000-07-14", "EZA": "2003-02-07",
+              "FXI": "2004-10-08", "INDA": "2012-02-03", "^IRX": "1990-01-02"}
+
+
+def fetch_synthetic(tickers: list[str], seed: int = 7) -> pd.DataFrame:
+    """Made-up prices with the same shape as the real data. Never real readings."""
+    rng = np.random.default_rng(seed)
+    idx = pd.bdate_range(FETCH_START, dt.date.today() - dt.timedelta(days=1))
+    n = len(idx)
+    vol = np.empty(n)
+    v = 0.007
+    for i in range(n):  # slow-moving market volatility with occasional spikes
+        v = max(0.003, 0.97 * v + 0.03 * 0.007 + 0.0005 * rng.standard_normal()
+                + (0.012 if rng.random() < 0.0015 else 0))
+        vol[i] = v
+    market = 0.0004 + vol * rng.standard_normal(n)
+    out = {}
+    for t in tickers:
+        if t == CASH_TICKER:
+            s = pd.Series(np.clip(3 + np.cumsum(0.02 * rng.standard_normal(n)), 0.05, 7), idx)
+        else:
+            beta = rng.uniform(0.7, 1.3)
+            own = rng.uniform(0.4, 0.9) * vol * rng.standard_normal(n)
+            r = beta * market + own + rng.uniform(-0.0001, 0.0002)
+            if t.startswith("V") and len(t) == 5:  # mutual fund: mimic stale pricing
+                r = 0.65 * r + 0.35 * np.roll(r, 1)
+            s = pd.Series(50 * np.exp(np.cumsum(r)), idx)
+        start = _SYN_START.get(t)
+        if start is None:
+            start = "1998-12-22" if t.startswith("XL") else (
+                "1996-03-18" if t.startswith("EW") else "2010-01-04")
+        out[t] = s[s.index >= start]
+    return pd.DataFrame(out)
+
+
+# --------------------------------------------------------------------------- #
+# Pipeline
+# --------------------------------------------------------------------------- #
+
+def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
+    for t in CORE:
+        if t not in px.columns:
+            raise SystemExit(f"Core ticker {t} is missing; refusing to publish.")
+    cal = px["SPY"].dropna().loc[FETCH_START:].index       # master trading calendar
+    px = px.reindex(cal)
+    asof = cal[-1]
+    if not synthetic and (pd.Timestamp.today().normalize() - asof).days > 7:
+        raise SystemExit(f"Latest data is {asof.date()}, more than a week old; refusing to publish.")
+    for t in CORE:
+        if pd.isna(px[t].iloc[-1]):
+            raise SystemExit(f"{t} has no price for {asof.date()}; refusing to publish.")
+
+    if CASH_TICKER in px.columns and px[CASH_TICKER].notna().sum() > 250:
+        cash = (px[CASH_TICKER] / 100.0).ffill().bfill()
+        cash_note = "13-week T-bill yield (^IRX)"
+    else:
+        cash = pd.Series(FALLBACK_CASH_RATE, index=cal)
+        cash_note = f"fixed {FALLBACK_CASH_RATE:.1%} (T-bill series unavailable)"
+        notes.append("T-bill series unavailable; financing cost uses a fixed rate.")
+
+    frames, info = {}, {}
+    for a, cfg in ASSETS.items():
+        etf = px[a]
+        etf_start = etf.first_valid_index()
+        meta = {"etf_start": etf_start, "proxy": None, "blend_weight": None,
+                "blend_corr": None, "stale_ac_backfill": None, "stale_ac_etf": None}
+        proxy_ret = None
+        prox = [p for p in (cfg["proxy"] or ()) if p in px.columns]
+        if cfg["proxy"] and len(prox) < len(cfg["proxy"]):
+            notes.append(f"{a}: backfill fund data missing, so history starts at the ETF's "
+                         f"own inception ({etf_start.date()}).")
+        elif len(prox) == 1:
+            proxy_ret = px[prox[0]].pct_change(fill_method=None)
+            meta["proxy"] = prox[0]
+        elif len(prox) == 2:
+            w, corr = fit_blend_weight(etf, px[prox[0]], px[prox[1]])
+            proxy_ret = (w * px[prox[0]].pct_change(fill_method=None)
+                         + (1 - w) * px[prox[1]].pct_change(fill_method=None))
+            meta.update(proxy=f"{w:.0%} {prox[0]} + {1 - w:.0%} {prox[1]}",
+                        blend_weight=w, blend_corr=corr)
+        price = splice(etf, proxy_ret)
+        ret = price.pct_change(fill_method=None)
+        log_ret = np.log(price).diff()
+
+        f = pd.DataFrame(index=cal)
+        f["price"] = price
+        f["mom_1m"] = momentum(price, MOM_SHORT)
+        f["mom_12m"] = momentum(price, MOM_LONG)
+        f["vol_20"] = realized_vol(ret, VOL_SHORT)
+        f["vol_60"] = realized_vol(ret, VOL_LONG)
+        f["ac1"] = rolling_autocorr(ret, SC_WINDOW)
+        for q in VR_HORIZONS:
+            f[f"vr{q}"] = variance_ratio(log_ret, q, SC_WINDOW)
+
+        # Serial-correlation windows that touch backfilled data are not ranked.
+        pos = cal.get_loc(etf_start) + SC_WINDOW + max(VR_HORIZONS)
+        sc_rank_from = cal[min(pos, len(cal) - 1)] if proxy_ret is not None else cal[0]
+        meta["sc_rank_from"] = sc_rank_from
+        if proxy_ret is not None:  # evidence for the stale-pricing caveat
+            pre = ret[(ret.index >= HISTORY_START) & (ret.index <= etf_start)].dropna()
+            post = ret[ret.index > etf_start].dropna()
+            if len(pre) > 250:
+                meta["stale_ac_backfill"] = float(pre.autocorr(1))
+                meta["stale_ac_etf"] = float(post.autocorr(1))
+
+        comps = px[[c for c in cfg["breadth"] if c in px.columns]].ffill(limit=5)
+        lost = [c for c in cfg["breadth"] if c not in px.columns]
+        if lost:
+            notes.append(f"{a} breadth is missing components: {', '.join(lost)}.")
+        b12 = breadth(comps, cfg["breadth"], MOM_LONG)
+        b1 = breadth(comps, cfg["breadth"], MOM_SHORT)
+        f["b12"], f["b12w"], f["b12n"] = b12["equal"], b12["weighted"], b12["n"]
+        f["b1"], f["b1w"] = b1["equal"], b1["weighted"]
+        near_high = price >= NEAR_HIGH * price.rolling(MOM_LONG).max()
+        narrowing = (f["b12"] < 0.5) | (f["b12"] - f["b12"].shift(63) <= -BREADTH_DROP)
+        f["narrow"] = (near_high & narrowing).astype(float).where(f["b12"].notna())
+
+        # Daily-reset leverage: trailing 1-year simulation and the forward window for the backtest.
+        f["und_1y"] = compound(ret, TRADING_DAYS)
+        f["fwd_1x"] = compound(ret, BACKTEST_HORIZON).shift(-BACKTEST_HORIZON)
+        for lev in LEVERAGE:
+            gross = leveraged_returns(ret, lev)
+            net = leveraged_returns(ret, lev, cash, FINANCING_SPREAD, EXPENSE_RATIO)
+            f[f"gross_{lev}x"] = compound(gross, TRADING_DAYS)
+            f[f"net_{lev}x"] = compound(net, TRADING_DAYS)
+            f[f"gap_{lev}x"] = f[f"gross_{lev}x"] - lev * f["und_1y"]
+            f[f"fwd_net_{lev}x"] = compound(net, BACKTEST_HORIZON).shift(-BACKTEST_HORIZON)
+            f[f"fwd_gap_{lev}x"] = (compound(gross, BACKTEST_HORIZON).shift(-BACKTEST_HORIZON)
+                                    - lev * f["fwd_1x"])
+        frames[a], info[a] = f, meta
+
+    # One common ranking window so no ETF is judged against an easier history.
+    firsts = [frames[a][["mom_12m", "vol_60"]].dropna().index[0] for a in CORE]
+    rank_start = max(max(firsts), pd.Timestamp(HISTORY_START))
+    if rank_start > pd.Timestamp(HISTORY_START) + pd.Timedelta(days=45):
+        notes.append(f"Common history starts {rank_start.date()}, later than the "
+                     f"{HISTORY_START} target, because earlier data was unavailable.")
+
+    for a in CORE:
+        f, meta = frames[a], info[a]
+        for key, _, _, _ in METRICS:
+            start = max(rank_start, meta["sc_rank_from"]) if key in SERIAL_KEYS else rank_start
+            f["p_" + key] = expanding_percentile(f[key].where(f.index >= start))
+        mom = 0.75 * f["p_mom_12m"] + 0.25 * f["p_mom_1m"]
+        vol = 100.0 - (f["p_vol_20"] + f["p_vol_60"]) / 2.0
+        sc = f[[f"p_vr{q}" for q in VR_HORIZONS]].mean(axis=1, skipna=False)
+        parts = pd.DataFrame({"momentum": mom, "volatility": vol, "serial_corr": sc})
+        w = pd.Series(SCORE_WEIGHTS)
+        score = parts.mul(w, axis=1).sum(axis=1) / parts.notna().mul(w, axis=1).sum(axis=1)
+        f["score"] = score.where(mom.notna() & vol.notna())
+        f["fav_momentum"], f["fav_volatility"], f["fav_serial"] = mom, vol, sc
+        label = pd.Series("neutral", index=f.index, dtype=object)
+        label[f["score"] >= FAVORABLE_AT] = "favorable"
+        label[f["score"] <= HOSTILE_AT] = "hostile"
+        label[(label == "favorable") & (f["narrow"] == 1)] = "neutral"
+        f["label"] = label.where(f["score"].notna())
+
+    return {"frames": frames, "info": info, "asof": asof, "rank_start": rank_start,
+            "cash": cash, "cash_note": cash_note}
+
+
+def _num(x, digits=4):
+    if x is None:
+        return None
+    try:
+        x = float(x)
+    except (TypeError, ValueError):
+        return None
+    return None if not math.isfinite(x) else round(x, digits)
+
+
+def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
+    frames, info, asof, rank_start = res["frames"], res["info"], res["asof"], res["rank_start"]
+    order12 = sorted(CORE, key=lambda a: -frames[a]["mom_12m"].iloc[-1])
+
+    assets = {}
+    for a in CORE:
+        f, meta, cfg = frames[a], info[a], ASSETS[a]
+        last = f.iloc[-1]
+        cells = {}
+        for key, _, _, higher_better in METRICS:
+            start = max(rank_start, meta["sc_rank_from"]) if key in SERIAL_KEYS else rank_start
+            hist = f[key][f.index >= start].dropna()
+            pct = _num(last["p_" + key], 1)
+            cells[key] = {
+                "value": _num(last[key]), "pct": pct,
+                "fav": None if pct is None else _num(pct if higher_better else 100 - pct, 1),
+                "prev": _num(f[key].iloc[-1 - MOM_SHORT]),
+                "q": [_num(hist.quantile(p)) for p in (0.01, 0.25, 0.5, 0.75, 0.99)] if len(hist) else None,
+                "n": int(len(hist)), "since": str(hist.index[0].date()) if len(hist) else None,
+            }
+        lev = {}
+        for L in LEVERAGE:
+            lev[str(L)] = {"naive": _num(L * last["und_1y"]), "gross": _num(last[f"gross_{L}x"]),
+                           "gap": _num(last[f"gap_{L}x"]), "net": _num(last[f"net_{L}x"]),
+                           "drag": _num(vol_drag(last["vol_60"], L))}
+        ef = f[(f.index > meta["etf_start"]) & f["label"].notna() & f[f"fwd_net_{LEVERAGE[-1]}x"].notna()]
+        backtest = []
+        for lab in ("favorable", "neutral", "hostile"):
+            g = ef[ef["label"] == lab]
+            row = {"label": lab, "days": int(len(g)), "share": _num(len(g) / max(len(ef), 1), 3),
+                   "windows": int(len(g) // BACKTEST_HORIZON)}
+            if len(g):
+                row.update(fwd_1x=_num(g["fwd_1x"].median()))
+                for L in LEVERAGE:
+                    row[f"net_{L}x"] = _num(g[f"fwd_net_{L}x"].median())
+                    row[f"gap_{L}x"] = _num(g[f"fwd_gap_{L}x"].median())
+                top = LEVERAGE[-1]
+                row["win"] = _num((g[f"fwd_net_{top}x"] > 0).mean(), 3)
+                row["p5"] = _num(g[f"fwd_net_{top}x"].quantile(0.05))
+            backtest.append(row)
+        assets[a] = {
+            "name": cfg["name"], "index": cfg["index"], "breadth_kind": cfg["breadth_kind"],
+            "etf_start": str(meta["etf_start"].date()), "proxy": meta["proxy"],
+            "blend_weight": _num(meta["blend_weight"], 2), "blend_corr": _num(meta["blend_corr"], 3),
+            "stale_ac_backfill": _num(meta["stale_ac_backfill"], 3),
+            "stale_ac_etf": _num(meta["stale_ac_etf"], 3),
+            "sc_rank_from": str(max(rank_start, meta["sc_rank_from"]).date()),
+            "score": _num(last["score"], 1), "label": last["label"] if isinstance(last["label"], str) else None,
+            "fav": {k: _num(last["fav_" + k], 1) for k in ("momentum", "volatility", "serial")},
+            "rank_12m": order12.index(a) + 1, "narrow": bool(last["narrow"] == 1),
+            "b12w": _num(last["b12w"]), "b1w": _num(last["b1w"]),
+            "b_members": int(last["b12n"]) if pd.notna(last["b12n"]) else 0,
+            "b_total": len(cfg["breadth"]), "und_1y": _num(last["und_1y"]),
+            "cells": cells, "lev": lev, "backtest": backtest,
+            "backtest_from": str(ef.index[0].date()) if len(ef) else None,
+        }
+
+    # Weekly samples (last trading day of each week) keep the page small.
+    keys = ["mom_12m", "mom_1m", "vol_60", "vol_20", "ac1", "vr10", "b12",
+            f"gap_{LEVERAGE[-1]}x", "score"]
+    weekly = None
+    series = {}
+    for a in CORE:
+        f = frames[a][frames[a].index >= rank_start]
+        wk = f.groupby(f.index.to_period("W-FRI")).tail(1)
+        weekly = wk.index
+        series[a] = {k: [_num(v) for v in wk[k]] for k in keys}
+    series["dates"] = [str(d.date()) for d in weekly]
+
+    return {
+        "asof": str(asof.date()),
+        "generated": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "synthetic": synthetic, "rank_start": str(rank_start.date()),
+        "cash_now": _num(res["cash"].iloc[-1]), "cash_note": res["cash_note"],
+        "notes": notes, "assets": assets, "series": series, "order": CORE,
+        "metrics": [{"key": k, "label": lab, "fmt": fmt, "higher_better": hb}
+                    for k, lab, fmt, hb in METRICS],
+        "config": {"mom": [MOM_SHORT, MOM_LONG], "vol": [VOL_SHORT, VOL_LONG],
+                   "sc_window": SC_WINDOW, "vr": list(VR_HORIZONS), "min_rank": MIN_RANK_OBS,
+                   "leverage": list(LEVERAGE), "spread": FINANCING_SPREAD, "fee": EXPENSE_RATIO,
+                   "weights": SCORE_WEIGHTS, "favorable_at": FAVORABLE_AT, "hostile_at": HOSTILE_AT,
+                   "horizon": BACKTEST_HORIZON, "near_high": NEAR_HIGH, "breadth_drop": BREADTH_DROP,
+                   "breadth_min": BREADTH_MIN_MEMBERS,
+                   "breadth": {a: ASSETS[a]["breadth"] for a in CORE}},
+    }
+
+
+def write_outputs(payload: dict, out_dir: Path, history_path: Path | None) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    blob = json.dumps(payload, allow_nan=False, separators=(",", ":")).replace("</", "<\\/")
+    (out_dir / "index.html").write_text(HTML.replace("/*__PAYLOAD__*/null", blob), encoding="utf-8")
+    slim = {k: v for k, v in payload.items() if k != "series"}
+    (out_dir / "latest.json").write_text(json.dumps(slim, indent=1), encoding="utf-8")
+
+    if history_path is None or payload["synthetic"]:
+        return
+    # One row per ETF per day: a genuine point-in-time record that builds up over time.
+    fields = ["date", "etf", "label", "score"] + [m["key"] for m in payload["metrics"]] \
+        + ["p_" + m["key"] for m in payload["metrics"]]
+    rows = []
+    if history_path.exists():
+        with history_path.open(newline="") as fh:
+            rows = [r for r in csv.DictReader(fh) if r.get("date") != payload["asof"]]
+    for a in payload["order"]:
+        d = payload["assets"][a]
+        row = {"date": payload["asof"], "etf": a, "label": d["label"], "score": d["score"]}
+        for m in payload["metrics"]:
+            row[m["key"]] = d["cells"][m["key"]]["value"]
+            row["p_" + m["key"]] = d["cells"][m["key"]]["pct"]
+        rows.append(row)
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    with history_path.open("w", newline="") as fh:
+        wr = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
+        wr.writeheader()
+        wr.writerows(sorted(rows, key=lambda r: (r["date"], r["etf"])))
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--out", default="site", help="output folder for index.html and latest.json")
+    ap.add_argument("--history", default="data/history.csv", help="daily log to append to ('' to skip)")
+    ap.add_argument("--synthetic", action="store_true", help="use made-up data (offline test)")
+    args = ap.parse_args()
+
+    notes: list[str] = []
+    px = fetch_synthetic(all_tickers()) if args.synthetic else fetch_live(all_tickers(), notes)
+    if px.empty:
+        raise SystemExit("No price data could be fetched; refusing to publish.")
+    res = build(px, notes, args.synthetic)
+    payload = make_payload(res, notes, args.synthetic)
+    write_outputs(payload, Path(args.out), Path(args.history) if args.history else None)
+    for a in CORE:
+        d = payload["assets"][a]
+        print(f"{payload['asof']} {a}: {d['label']} (score {d['score']})")
+    for n in notes:
+        print("note:", n)
+
+
+# --------------------------------------------------------------------------- #
+# Page template (data is injected as JSON; everything renders in the browser)
+# --------------------------------------------------------------------------- #
+
+HTML = r'''<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leverage Environment</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/3.6.0/plotly.min.js"></script>
+<style>
+:root{color-scheme:light;--page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;
+--grid:#e1e0d9;--axis:#c3c2b7;--border:rgba(11,11,11,.10);--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;
+--good:#0ca30c;--warn:#fab219;--crit:#d03b3b;--band:rgba(11,11,11,.05)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;
+--ink:#fff;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;--border:rgba(255,255,255,.10);
+--s1:#3987e5;--s2:#d95926;--s3:#199e70;--band:rgba(255,255,255,.06)}}
+:root[data-theme="dark"]{color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#898781;
+--grid:#2c2c2a;--axis:#383835;--border:rgba(255,255,255,.10);--s1:#3987e5;--s2:#d95926;--s3:#199e70;--band:rgba(255,255,255,.06)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1180px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:26px;margin:0 0 4px;letter-spacing:-.01em}
+h2{font-size:18px;margin:44px 0 6px}
+h3{font-size:15px;margin:22px 0 4px}
+p{margin:6px 0}.sub{color:var(--ink2);max-width:78ch}.small{font-size:13px;color:var(--ink2)}
+.banner{background:var(--warn);color:#0b0b0b;padding:10px 14px;border-radius:8px;font-weight:600;margin:0 0 16px}
+.notes{border:1px solid var(--border);border-left:4px solid var(--warn);border-radius:8px;padding:10px 14px;margin:14px 0;background:var(--surface)}
+.notes ul{margin:4px 0 0;padding-left:18px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px;margin-top:18px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px}
+.card .tk{display:flex;align-items:center;gap:8px;font-weight:650;font-size:17px}
+.sw{width:12px;height:12px;border-radius:3px;display:inline-block;flex:none}
+.card .nm{color:var(--ink2);font-size:13px;margin-bottom:10px}
+.verdict{display:flex;align-items:baseline;gap:10px;margin:6px 0 2px}
+.verdict .lab{font-size:22px;font-weight:650;display:flex;align-items:center;gap:7px}
+.verdict .sc{color:var(--ink2);font-size:13px}
+.ico{font-size:13px}.ico.favorable{color:var(--good)}.ico.hostile{color:var(--crit)}.ico.neutral{color:var(--muted)}
+.flag{display:inline-block;font-size:12px;border:1px solid var(--border);border-radius:999px;padding:1px 8px;margin-top:4px;color:var(--ink2)}
+dl{display:grid;grid-template-columns:1fr auto;gap:3px 12px;margin:12px 0 0;font-size:13.5px}
+dt{color:var(--ink2)}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+dt.h{grid-column:1/-1;color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;margin-top:8px}
+.scroll{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface);margin-top:12px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--grid);vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font-weight:600;color:var(--ink2);font-size:12.5px;white-space:nowrap}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.nw{white-space:nowrap}#bt th{white-space:normal;vertical-align:bottom}td.grp{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;padding-top:14px;border-bottom:0}
+.cell{min-width:170px}.cell .v{font-weight:600;font-variant-numeric:tabular-nums}
+.cell .p{color:var(--ink2);font-size:12.5px;margin-left:6px}
+.cell .f{font-size:12px;color:var(--ink2);display:flex;align-items:center;gap:5px;margin-top:1px}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.rb{display:block;width:100%;height:16px;margin-top:3px}
+.legend{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:12px 0 8px;font-size:13.5px}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend .line{width:16px;height:3px;border-radius:2px;display:inline-block}
+.btns{margin-left:auto;display:flex;gap:4px}
+button{font:inherit;font-size:13px;padding:4px 11px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--ink);cursor:pointer}
+button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:14px}
+@media (max-width:520px){.charts{grid-template-columns:1fr}}
+.chart{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 8px 4px 8px;min-width:0}
+.chart h3{margin:0 8px 0;font-size:14px}.chart p{margin:0 8px;font-size:12.5px;color:var(--ink2)}
+.plot{height:230px}
+.doc{max-width:82ch}.doc li{margin:5px 0}.doc ul{padding-left:20px;margin:6px 0}
+code{font-size:.92em;background:var(--band);padding:1px 4px;border-radius:4px}
+footer{margin-top:40px;color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<main>
+<div id="banner"></div>
+<h1>Leverage Environment</h1>
+<p class="sub">How friendly current conditions are to holding daily-reset 2x or 3x exposure to SPY, EFA and EEM,
+judged by momentum, volatility, serial correlation and breadth. Every reading is shown with its percentile against that
+ETF's own history. <span id="asof"></span></p>
+<p class="small">This is a monitoring tool built on approximations, not investment advice. Read
+<a href="#method">Methodology and caveats</a> before relying on any number here.</p>
+<div id="notes"></div>
+
+<section class="cards" id="cards"></section>
+
+<h2>Readings against each ETF's own history</h2>
+<p class="sub">Each cell shows today's value, its percentile, and a bar spanning the 1st to 99th percentile of history:
+the shaded block is the middle half, the tick is the median, the solid dot is today and the hollow dot is one month ago.
+A percentile says how high a reading is, not whether that is good; the word beneath it gives the direction for leverage.</p>
+<div class="scroll"><table id="grid"></table></div>
+
+<h2>How leverage actually compounded over the past year</h2>
+<p class="sub">A simulated daily-reset fund compared with simply multiplying the unlevered return. The compounding
+effect is positive when returns trended and negative when they chopped. This is the outcome the metrics above try to anticipate.</p>
+<div class="scroll"><table id="lev"></table></div>
+
+<h2>History</h2>
+<div class="legend" id="legend"></div>
+<p class="small" id="shade-note"></p>
+<div class="charts" id="charts"></div>
+
+<h2>Does the label mean anything? A point-in-time check</h2>
+<p class="sub" id="bt-intro"></p>
+<div class="scroll"><table id="bt"></table></div>
+
+<h2 id="method">Methodology and caveats</h2>
+<div class="doc" id="doc"></div>
+<footer id="foot"></footer>
+</main>
+
+<script>
+const D = /*__PAYLOAD__*/null;
+const $ = (id) => document.getElementById(id);
+const C = D.config, A = D.order;
+const pct = (x, d = 1) => x == null ? "n/a" : (x * 100).toFixed(d) + "%";
+const spct = (x, d = 1) => x == null ? "n/a" : (x > 0 ? "+" : "") + (x * 100).toFixed(d) + "%";
+const num = (x, d = 2) => x == null ? "n/a" : x.toFixed(d);
+const ord = (n) => { n = Math.round(n); const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+const fmtv = (m, x, signed) => m.fmt === "pct" ? (signed ? spct(x) : pct(x)) : num(x);
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const COLOR = { SPY: "--s1", EFA: "--s2", EEM: "--s3" };
+const ICON = { favorable: "▲", neutral: "■", hostile: "▼" };
+const cap = (s) => s ? s[0].toUpperCase() + s.slice(1) : "n/a";
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const favWord = (f) => f == null ? "" : f >= 66.7 ? "favorable" : f <= 33.3 ? "unfavorable" : "middling";
+const favColor = (f) => f >= 66.7 ? "var(--good)" : f <= 33.3 ? "var(--crit)" : "var(--muted)";
+const quint = (p) => p == null ? null : Math.min(5, Math.max(1, Math.ceil(p / 20)));
+const pctText = (key, p) => p == null ? "not enough history" : (key !== "mom_12m" && p < 1) ? "lowest 1%" :
+  key === "mom_12m" ? "quintile " + quint(p) + " of 5" : ord(p) + " percentile";
+
+if (D.synthetic) $("banner").innerHTML = '<div class="banner">SYNTHETIC TEST DATA. Every number on this page is made up to test the layout and is not a market reading.</div>';
+$("asof").textContent = "Data through " + D.asof + "; ranked against history since " + D.rank_start + ".";
+if (D.notes.length) $("notes").innerHTML = '<div class="notes"><strong>Data notes for this run</strong><ul>' +
+  D.notes.map((n) => "<li>" + esc(n) + "</li>").join("") + "</ul></div>";
+
+// ---- cards ---------------------------------------------------------------
+$("cards").innerHTML = A.map((a) => {
+  const d = D.assets[a], c = d.cells, L = d.lev;
+  const row = (k, v) => "<dt>" + k + "</dt><dd>" + v + "</dd>";
+  const band = 2 / Math.sqrt(C.sc_window);
+  return '<article class="card"><div class="tk"><i class="sw" style="background:var(' + COLOR[a] + ')"></i>' + a + "</div>" +
+    '<div class="nm">' + d.name + " · " + d.index + "</div>" +
+    '<div class="verdict"><span class="lab"><span class="ico ' + d.label + '">' + (ICON[d.label] || "") + "</span>" + cap(d.label) + "</span>" +
+    '<span class="sc">score ' + (d.score == null ? "n/a" : d.score.toFixed(0)) + " of 100</span></div>" +
+    (d.narrow ? '<span class="flag">⚠ Narrow advance: near its high on weak or falling breadth</span>' : "") +
+    "<dl>" +
+    '<dt class="h">Momentum</dt>' +
+    row("1 month", spct(c.mom_1m.value) + " · " + pctText("mom_1m", c.mom_1m.pct)) +
+    row("12 months", spct(c.mom_12m.value) + " · " + pctText("mom_12m", c.mom_12m.pct)) +
+    row("12-month rank among the three", d.rank_12m + " of " + A.length) +
+    '<dt class="h">Volatility (annualized)</dt>' +
+    row("20-day", pct(c.vol_20.value) + " · " + pctText("vol_20", c.vol_20.pct)) +
+    row("60-day", pct(c.vol_60.value) + " · " + pctText("vol_60", c.vol_60.pct)) +
+    row("Implied yearly drag at 2x / 3x", pct(L["2"].drag) + " / " + pct(L["3"].drag)) +
+    '<dt class="h">Serial correlation (1-year window)</dt>' +
+    row("Lag-1 autocorrelation", num(c.ac1.value) + " (noise band ±" + band.toFixed(2) + ")") +
+    row("Variance ratio 5 / 10 / 20 day", num(c.vr5.value) + " / " + num(c.vr10.value) + " / " + num(c.vr20.value)) +
+    '<dt class="h">Breadth (' + d.b_members + " of " + d.b_total + " " + d.breadth_kind + ")</dt>" +
+    row("Up over 12 months, equal / index weight", pct(c.b12.value, 0) + " / " + pct(d.b12w, 0)) +
+    row("Up over 1 month, equal / index weight", pct(c.b1.value, 0) + " / " + pct(d.b1w, 0)) +
+    "</dl></article>";
+}).join("");
+
+// ---- grid with range bars -------------------------------------------------
+function rangeBar(m, c) {
+  if (!c.q || c.value == null) return "";
+  const lo = c.q[0], hi = c.q[4], x = (v) => 4 + 192 * Math.min(1, Math.max(0, (v - lo) / ((hi - lo) || 1)));
+  const tip = "1st pct " + fmtv(m, lo) + ", median " + fmtv(m, c.q[2]) + ", 99th pct " + fmtv(m, hi) +
+    "; one month ago " + fmtv(m, c.prev) + "; history since " + c.since;
+  return '<svg class="rb" viewBox="0 0 200 16" preserveAspectRatio="none" role="img" aria-label="' + tip + '"><title>' + tip + "</title>" +
+    '<line x1="4" x2="196" y1="8" y2="8" stroke="var(--axis)" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
+    '<rect x="' + x(c.q[1]) + '" y="4" width="' + Math.max(1, x(c.q[3]) - x(c.q[1])) + '" height="8" rx="2" fill="var(--axis)"/>' +
+    '<line x1="' + x(c.q[2]) + '" x2="' + x(c.q[2]) + '" y1="2" y2="14" stroke="var(--muted)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>' +
+    (c.prev == null ? "" : '<ellipse cx="' + x(c.prev) + '" cy="8" rx="2.6" ry="4" fill="var(--surface)" stroke="var(--ink2)" stroke-width="1.2" vector-effect="non-scaling-stroke"/>') +
+    '<ellipse cx="' + x(c.value) + '" cy="8" rx="2.9" ry="4.6" fill="var(--ink)" stroke="var(--surface)" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>';
+}
+const GROUPS = { mom_1m: "Momentum", vol_20: "Volatility", ac1: "Serial correlation", b12: "Breadth" };
+$("grid").innerHTML = "<thead><tr><th>Metric</th>" + A.map((a) => "<th>" + a + "</th>").join("") + "</tr></thead><tbody>" +
+  D.metrics.map((m) => (GROUPS[m.key] ? '<tr><td class="grp" colspan="' + (A.length + 1) + '">' + GROUPS[m.key] + "</td></tr>" : "") +
+    "<tr><td>" + m.label + '<div class="small">' + (m.higher_better ? "higher is better for leverage" : "lower is better for leverage") + "</div></td>" +
+    A.map((a) => {
+      const c = D.assets[a].cells[m.key];
+      if (c.value == null) return '<td class="cell"><span class="p">n/a</span></td>';
+      return '<td class="cell"><span class="v">' + fmtv(m, c.value, m.key.startsWith("mom")) + '</span><span class="p">' + pctText(m.key, c.pct) + "</span>" +
+        (c.fav == null ? "" : '<div class="f"><i class="dot" style="background:' + favColor(c.fav) + '"></i>' + favWord(c.fav) + "</div>") +
+        rangeBar(m, c) + "</td>";
+    }).join("") + "</tr>").join("") + "</tbody>";
+
+// ---- leverage table -------------------------------------------------------
+$("lev").innerHTML = '<thead><tr><th>ETF</th><th class="n">Unlevered, past year</th><th>Leverage</th><th class="n">Simple multiple</th>' +
+  '<th class="n">Simulated, before costs</th><th class="n">Compounding effect</th><th class="n">Simulated, after financing and fees</th></tr></thead><tbody>' +
+  A.map((a) => C.leverage.map((L, i) => {
+    const d = D.assets[a], x = d.lev[String(L)];
+    return "<tr>" + (i ? "" : '<td rowspan="' + C.leverage.length + '"><strong>' + a + '</strong></td><td class="n" rowspan="' + C.leverage.length + '">' + spct(d.und_1y) + "</td>") +
+      "<td>" + L + 'x</td><td class="n">' + spct(x.naive) + '</td><td class="n">' + spct(x.gross) + '</td><td class="n">' + spct(x.gap) + '</td><td class="n">' + spct(x.net) + "</td></tr>";
+  }).join("")).join("") + "</tbody>";
+
+// ---- backtest -------------------------------------------------------------
+const TOP = C.leverage[C.leverage.length - 1];
+$("bt-intro").textContent = "For every past day, the label was computed using only data available on that day, then compared with what a simulated " +
+  "daily-reset fund did over the following " + C.horizon + " trading days. If the label is useful, favorable rows should beat hostile rows. " +
+  "Windows overlap heavily, so the last column gives the rough count of independent periods behind each row.";
+$("bt").innerHTML = '<thead><tr><th>ETF</th><th>Label</th><th class="n">Share of days</th><th class="n">Median 1x</th>' +
+  C.leverage.map((L) => '<th class="n">Median ' + L + "x after costs</th>").join("") +
+  '<th class="n">Median ' + TOP + 'x compounding effect</th><th class="n">' + TOP + 'x positive</th><th class="n">' + TOP + 'x worst 5%</th><th class="n">Independent periods</th></tr></thead><tbody>' +
+  A.map((a) => D.assets[a].backtest.map((r, i) => "<tr>" +
+    (i ? "" : '<td class="nw" rowspan="3"><strong>' + a + '</strong><div class="small">from ' + (D.assets[a].backtest_from || "n/a") + "</div></td>") +
+    '<td class="nw"><span class="ico ' + r.label + '">' + ICON[r.label] + "</span> " + cap(r.label) + '</td><td class="n">' + pct(r.share, 0) + '</td><td class="n">' + spct(r.fwd_1x) + "</td>" +
+    C.leverage.map((L) => '<td class="n">' + spct(r["net_" + L + "x"]) + "</td>").join("") +
+    '<td class="n">' + spct(r["gap_" + TOP + "x"]) + '</td><td class="n">' + pct(r.win, 0) + '</td><td class="n">' + spct(r.p5) + '</td><td class="n">' + r.windows + "</td></tr>").join("")).join("") + "</tbody>";
+
+// ---- charts ---------------------------------------------------------------
+const CHARTS = [
+  { key: "mom_12m", title: "12-month momentum", note: "Total return over 252 trading days", pct: true, zero: 0 },
+  { key: "mom_1m", title: "1-month momentum", note: "Total return over 21 trading days", pct: true, zero: 0 },
+  { key: "vol_60", title: "Volatility, 60-day", note: "Annualized standard deviation of daily returns", pct: true },
+  { key: "vol_20", title: "Volatility, 20-day", note: "Annualized standard deviation of daily returns", pct: true },
+  { key: "vr10", title: "Variance ratio, 10-day", note: "Above 1 = trending, below 1 = choppy; 1-year window", zero: 1 },
+  { key: "ac1", title: "Lag-1 autocorrelation", note: "1-year window; readings inside the noise band are indistinguishable from zero", zero: 0, band: 2 / Math.sqrt(C.sc_window) },
+  { key: "b12", title: "Breadth", note: "Share of sector or country ETFs with a positive 12-month return (equal weight)", pct: true },
+  { key: "gap_" + TOP + "x", title: TOP + "x compounding effect, trailing year", note: "Simulated " + TOP + "x return minus " + TOP + " times the unlevered return, before costs", pct: true, zero: 0 },
+  { key: "score", title: "Composite score", note: "0 to 100; at or above " + C.favorable_at + " is favorable, at or below " + C.hostile_at + " is hostile", zero: 50 },
+];
+const backfilled = A.filter((a) => D.assets[a].proxy);
+const shadeEnd = backfilled.map((a) => D.assets[a].etf_start).sort().pop();
+$("legend").innerHTML = A.map((a) => '<span><i class="line" style="background:var(' + COLOR[a] + ')"></i>' + a + "</span>").join("") +
+  '<div class="btns" role="group" aria-label="Time range">' + [["1Y", 1], ["5Y", 5], ["10Y", 10], ["All", 0]].map(([t, y]) =>
+    '<button data-y="' + y + '" aria-pressed="' + (y === 0) + '">' + t + "</button>").join("") + "</div>";
+$("shade-note").textContent = backfilled.length ? "The shaded era is backfilled from mutual funds (" +
+  backfilled.map((a) => a + " before " + D.assets[a].etf_start).join(", ") + ") and is approximate; see the caveats below. Weekly samples." : "Weekly samples.";
+$("charts").innerHTML = CHARTS.map((c, i) => '<div class="chart"><h3>' + c.title + "</h3><p>" + c.note + '</p><div class="plot" id="pl' + i + '"></div></div>').join("");
+
+let years = 0;
+function xRange() {
+  const d = D.series.dates, end = d[d.length - 1];
+  if (!years) return [d[0], end];
+  const s = new Date(end); s.setFullYear(s.getFullYear() - years);
+  const iso = s.toISOString().slice(0, 10);
+  return [iso < d[0] ? d[0] : iso, end];
+}
+function draw() {
+  if (!window.Plotly) { $("charts").innerHTML = '<p class="small">Charts need the Plotly library, which could not be loaded. The tables above are unaffected.</p>'; return; }
+  const [x0, x1] = xRange(), ink2 = css("--ink2"), grid = css("--grid"), axis = css("--axis"), band = css("--band");
+  CHARTS.forEach((c, i) => {
+    const k = c.pct ? 100 : 1; let lo = Infinity, hi = -Infinity;
+    const traces = A.map((a) => {
+      const y = D.series[a][c.key].map((v) => v == null ? null : v * k);
+      D.series.dates.forEach((d, j) => { if (d >= x0 && d <= x1 && y[j] != null) { lo = Math.min(lo, y[j]); hi = Math.max(hi, y[j]); } });
+      return { x: D.series.dates, y, name: a, mode: "lines", line: { color: css(COLOR[a]), width: 1.6 },
+        hovertemplate: "%{y:." + (c.pct ? 1 : 2) + "f}" + (c.pct ? "%" : "") + "<extra>" + a + "</extra>" };
+    });
+    if (c.band) { lo = Math.min(lo, -c.band); hi = Math.max(hi, c.band); }
+    if (!isFinite(lo)) { lo = 0; hi = 1; }
+    const pad = (hi - lo) * 0.07 || 1, shapes = [];
+    if (shadeEnd && shadeEnd > x0) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: x0, x1: shadeEnd, y0: 0, y1: 1, fillcolor: band, line: { width: 0 }, layer: "below" });
+    if (c.band) shapes.push({ type: "rect", xref: "paper", yref: "y", x0: 0, x1: 1, y0: -c.band, y1: c.band, fillcolor: band, line: { width: 0 }, layer: "below" });
+    if (c.zero != null) shapes.push({ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: c.zero * k, y1: c.zero * k, line: { color: axis, width: 1 }, layer: "below" });
+    Plotly.react("pl" + i, traces, {
+      margin: { l: 46, r: 12, t: 8, b: 26 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", showlegend: false,
+      hovermode: "x unified", hoverlabel: { bgcolor: css("--surface"), bordercolor: axis, font: { color: css("--ink"), size: 12 } },
+      font: { family: 'system-ui,-apple-system,"Segoe UI",sans-serif', size: 11, color: ink2 },
+      xaxis: { range: [x0, x1], showgrid: false, linecolor: axis, tickcolor: axis, fixedrange: true },
+      yaxis: { range: [lo - pad, hi + pad], gridcolor: grid, zeroline: false, ticksuffix: c.pct ? "%" : "", fixedrange: true },
+      shapes,
+    }, { displayModeBar: false, responsive: true });
+  });
+}
+document.querySelectorAll(".btns button").forEach((b) => b.addEventListener("click", () => {
+  years = +b.dataset.y;
+  document.querySelectorAll(".btns button").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+  draw();
+}));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+draw();
+
+// ---- documentation --------------------------------------------------------
+const efa = D.assets.EFA, eem = D.assets.EEM, W = C.weights;
+const stale = (d) => d.stale_ac_backfill == null ? "" : " In this data the lag-1 autocorrelation of daily returns is " +
+  num(d.stale_ac_backfill) + " in the backfilled era against " + num(d.stale_ac_etf) + " once the ETF trades.";
+const members = (a) => Object.entries(C.breadth[a]).map(([t, w]) => t + " " + w + "%").join(", ");
+$("doc").innerHTML = `
+<h3>What this page is and is not</h3>
+<ul>
+<li>It describes conditions; it does not predict returns and is not investment advice. Daily-reset leveraged funds can lose most of their value quickly, in any environment.</li>
+<li>The composite label is a rule of thumb whose weights were chosen by judgment, not fitted or validated. Treat the individual readings as the information and the label as a summary.</li>
+<li>All leveraged figures are simulations of an idealized fund. Real funds differ through swap pricing, tracking error, taxes, premiums and discounts, and their own fee schedules. Check which leveraged products actually exist for each index and how liquid they are.</li>
+</ul>
+
+<h3>Data</h3>
+<ul>
+<li>Prices are daily closes from Yahoo Finance, adjusted for dividends and splits, so every return is a total return. Yahoo revises adjusted history whenever a dividend is paid, so past readings can shift slightly between runs. The source is free and unofficial and can be wrong or unavailable; if the three core ETFs cannot be fetched or the data is more than a week old, the job fails instead of publishing.</li>
+<li>The ETFs are SPY (${D.assets.SPY.index}), EFA (${efa.index}) and EEM (${eem.index}). All percentiles use one common window starting ${D.rank_start} so that no ETF is ranked against an easier history than another.</li>
+<li>The page is built after the US close on trading days. A reading dated ${D.asof} uses that day's close.</li>
+</ul>
+
+<h3>Backfilled history before the ETFs existed</h3>
+<ul>
+<li>EFA began trading on ${efa.etf_start}. ${efa.proxy ? "Earlier returns come from a fixed blend of two Vanguard index funds, " + esc(efa.proxy) + " (Europe and Pacific), which tracked the two MSCI regions that make up EAFE. The blend weight was fitted to EFA's monthly returns over the first five years of overlap" + (efa.blend_corr == null ? "" : " (correlation " + num(efa.blend_corr, 3) + ")") + ". The true regional mix drifted over time, so a fixed weight is an approximation." : "No backfill was available in this run."}</li>
+<li>EEM began trading on ${eem.etf_start}. ${eem.proxy ? "Earlier returns come from Vanguard's emerging markets index fund (" + esc(eem.proxy) + "), which at the time tracked a select MSCI emerging markets index. That index left out some countries, so it is close to, but not the same as, the index EEM follows." : "No backfill was available in this run."}</li>
+<li>The backfill funds carry their own expenses and are mutual funds priced once a day. Their history is used only before each ETF's first trading day.</li>
+<li><strong>Stale pricing.</strong> In that era the funds were priced from foreign closing prices set hours before the US close, so US-session news reached them a day late. This manufactures positive day-to-day correlation and understates daily volatility.${stale(efa)}${stale(eem)}</li>
+<li>Consequences: momentum over 1 and 12 months is essentially unaffected. Volatility in the shaded era is understated, which makes later volatility percentiles read slightly high. Serial-correlation readings that touch the backfilled era are plotted for reference but excluded from percentile ranking (EFA ranks from ${efa.sc_rank_from}, EEM from ${eem.sc_rank_from}).</li>
+</ul>
+
+<h3>Percentiles</h3>
+<ul>
+<li>Each percentile ranks today's reading against that ETF's own readings since the start of the window, so a naturally volatile market such as EEM is not permanently flagged. Percentiles are therefore not comparable across ETFs: EEM at its 30th volatility percentile can still be more volatile than SPY at its 70th. The volatility drag depends on the raw number, which is why it is always shown.</li>
+<li>A percentile says how high a reading is, not whether that is good. Direction is stated separately in each cell (favorable, middling, unfavorable for leverage, split at thirds).</li>
+<li>Percentiles are point-in-time: every past value is ranked only against data that existed on that date, and at least ${C.min_rank} observations are required before one is reported. Early percentiles rest on a short history and are less reliable.</li>
+<li>Range bars span the 1st to 99th percentile, not the absolute minimum and maximum, because single crisis days would otherwise squash everything else to one side.</li>
+<li>Daily readings overlap heavily. Roughly ${Math.round((new Date(D.asof) - new Date(D.rank_start)) / 31557600000)} years of 12-month returns contain only about that many independent observations, so 12-month momentum is reported as a quintile, not a precise percentile.</li>
+</ul>
+
+<h3>Momentum</h3>
+<ul>
+<li>Total return over ${C.mom[0]} and ${C.mom[1]} trading days. There is no trend filter or on/off gate; raw values and percentiles are shown as they are.</li>
+<li>For scoring, higher momentum counts as more favorable at both horizons. One-month returns are noisy and sometimes partially reverse, so the 12-month reading carries three quarters of the momentum weight.</li>
+<li>The 1-2-3 rank compares 12-month returns across the three ETFs.</li>
+</ul>
+
+<h3>Volatility</h3>
+<ul>
+<li>Annualized standard deviation of daily returns over ${C.vol[0]} and ${C.vol[1]} trading days. This is backward-looking realized volatility, not a forecast, and it can jump faster than any window can register.</li>
+<li>Implied drag uses the approximation L(L-1)/2 times variance: the yearly return a daily-reset fund gives up to volatility relative to L times the unlevered return. It is quoted from the ${C.vol[1]}-day reading and ignores trend, which can offset or outweigh it.</li>
+</ul>
+
+<h3>Serial correlation</h3>
+<ul>
+<li>Daily-reset leverage gains when moves follow through and loses when they reverse. Two views over a ${C.sc_window}-day window: the correlation of each day's return with the previous day's, and variance ratios at ${C.vr.join(", ")} days (the variance of multi-day returns divided by what a random walk would give; above 1 means trending).</li>
+<li>This is the weakest signal here. The sampling error on a ${C.sc_window}-day autocorrelation is about ${(1 / Math.sqrt(C.sc_window)).toFixed(2)}, so readings inside roughly plus or minus ${(2 / Math.sqrt(C.sc_window)).toFixed(2)} cannot be told apart from zero. Variance ratios use overlapping returns and are biased slightly below 1 in short samples. It gets the smallest weight in the score for these reasons.</li>
+<li>EFA and EEM hold shares that trade while the US market is closed, so even the ETFs carry some artificial day-to-day correlation. Their absolute readings are not directly comparable with SPY's.</li>
+</ul>
+
+<h3>Breadth</h3>
+<ul>
+<li>Breadth is the share of an index's building blocks with a positive return over the same 1- and 12-month windows used for momentum. It is a quality check on momentum, not a fourth independent signal: the two usually agree, and the useful case is a rising index with few participants.</li>
+<li>The building blocks are coarse proxies, not the underlying stocks. SPY uses sector ETFs; EFA and EEM use single-country ETFs. With only ${C.breadth_min} to 20 members the reading moves in visible steps and its percentile is lumpy. SPY uses sectors because rebuilding stock-level breadth from today's index members would bias the history upward (failed companies would be missing).</li>
+<li>Membership changes over time as funds launched, so early breadth rests on fewer members (at least ${C.breadth_min} are required). Emerging-market country ETFs mostly launched in 2000 or later, so EEM breadth history is the shortest.</li>
+<li>Country lists follow MSCI's classification: South Korea is in the EEM set and Canada is in neither. The country ETFs track capped or variant indexes (China is represented by FXI, a large-cap fund chosen for its longer history), so they are not exact slices of EFA or EEM.</li>
+<li>The index-weighted figure uses approximate, fixed weights that were set by hand and are applied to all of history. Treat it as a rough cross-check on concentration, and update the weights in the script from fund fact sheets if you rely on it. Current sets: SPY: ${members("SPY")}. EFA: ${members("EFA")}. EEM: ${members("EEM")}.</li>
+<li>The narrow-advance flag appears when the ETF is within ${Math.round((1 - C.near_high) * 100)}% of its one-year high while fewer than half the components are up over 12 months, or that share has dropped ${Math.round(C.breadth_drop * 100)} points or more in three months. It is a warning light only: capitalization-weighted indexes can rise on narrow breadth for a long time.</li>
+</ul>
+
+<h3>Composite score and label</h3>
+<ul>
+<li>Score = ${Math.round(W.momentum * 100)}% momentum (three quarters 12-month, one quarter 1-month percentile) + ${Math.round(W.volatility * 100)}% volatility (average of the two percentiles, inverted) + ${Math.round(W.serial_corr * 100)}% serial correlation (average of the three variance-ratio percentiles). Where serial correlation cannot be ranked, the other two are re-weighted.</li>
+<li>Favorable at ${C.favorable_at} or above, hostile at ${C.hostile_at} or below, neutral between. A narrow-advance flag downgrades favorable to neutral and does nothing else.</li>
+<li>Because the inputs are percentiles of each ETF's own history, the same label on two ETFs does not mean the same absolute risk.</li>
+</ul>
+
+<h3>Leverage simulation</h3>
+<ul>
+<li>Each day the simulated fund earns L times the ETF's total return. After costs, it also pays the cash rate plus ${(C.spread * 100).toFixed(2)}% on the borrowed (L-1) portion and a ${(C.fee * 100).toFixed(2)}% annual fee. The cash rate is the ${esc(D.cash_note)}, currently ${pct(D.cash_now, 2)}.</li>
+<li>The compounding effect is the simulated return before costs minus L times the unlevered return over the same year. Positive means the path helped (persistent trend); negative means it hurt (volatility and reversals).</li>
+<li>Not modelled: intraday moves, tracking error, swap spreads that widen in stress, fund closures, and the fact that a 3x fund is wiped out by a single-day fall of about 33%.</li>
+</ul>
+
+<h3>Point-in-time check</h3>
+<ul>
+<li>Uses only dates after each ETF began trading, with labels built from percentiles as they stood on each date, and looks ${C.horizon} trading days ahead.</li>
+<li>The score weights and thresholds were not tuned to this history, but they were chosen with knowledge of how markets behaved, so this is not a clean out-of-sample test. The sample contains only a handful of major bear markets, and those few episodes dominate the hostile rows.</li>
+<li>Adjacent days share almost all of their forward window. The independent-period count is the honest sample size; differences between rows with few independent periods are not reliable.</li>
+<li>Past simulated results do not indicate future results.</li>
+</ul>`;
+$("foot").textContent = "Generated " + D.generated + " · data through " + D.asof + " · source: Yahoo Finance via yfinance";
+</script>
+</body>
+</html>
+'''
+
+if __name__ == "__main__":
+    main()
