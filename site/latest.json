@@ -1,6 +1,6 @@
 {
  "asof": "2026-10-02",
- "generated": "2026-10-05 19:00 UTC",
+ "generated": "2026-10-05 19:08 UTC",
  "synthetic": false,
  "rank_start": "1998-01-01",
  "cash_now": 0.0399,
@@ -205,29 +205,29 @@
    "backtest": [
     {
      "label": "favorable",
-     "days": 2982,
+     "days": 2983,
      "share": 0.447,
      "windows": 47,
-     "fwd_1x": 0.034,
+     "fwd_1x": 0.0341,
      "net_2x": 0.0575,
      "gap_2x": -0.002,
      "net_3x": 0.0811,
      "gap_3x": -0.0061,
-     "win": 0.682,
+     "win": 0.683,
      "p5": -0.2983
     },
     {
      "label": "neutral",
-     "days": 2031,
+     "days": 2030,
      "share": 0.305,
      "windows": 32,
-     "fwd_1x": 0.0386,
-     "net_2x": 0.0629,
+     "fwd_1x": 0.0385,
+     "net_2x": 0.0628,
      "gap_2x": -0.0017,
-     "net_3x": 0.0849,
-     "gap_3x": -0.0052,
+     "net_3x": 0.0846,
+     "gap_3x": -0.0053,
      "win": 0.66,
-     "p5": -0.3379
+     "p5": -0.338
     },
     {
      "label": "hostile",
@@ -677,29 +677,29 @@
    "backtest": [
     {
      "label": "favorable",
-     "days": 2036,
-     "share": 0.349,
+     "days": 2035,
+     "share": 0.348,
      "windows": 32,
-     "fwd_1x": 0.0378,
+     "fwd_1x": 0.0379,
      "net_2x": 0.0556,
      "gap_2x": -0.003,
-     "net_3x": 0.0669,
+     "net_3x": 0.067,
      "gap_3x": -0.0086,
      "win": 0.592,
      "p5": -0.357
     },
     {
      "label": "neutral",
-     "days": 2420,
+     "days": 2421,
      "share": 0.414,
      "windows": 38,
      "fwd_1x": 0.0229,
-     "net_2x": 0.0248,
+     "net_2x": 0.0247,
      "gap_2x": -0.0056,
-     "net_3x": 0.0189,
+     "net_3x": 0.0188,
      "gap_3x": -0.0166,
-     "win": 0.533,
-     "p5": -0.4019
+     "win": 0.532,
+     "p5": -0.4018
     },
     {
      "label": "hostile",
