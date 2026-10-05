@@ -114,8 +114,12 @@ def test_full_pipeline_on_synthetic_data(tmp_path):
     notes = []
     res = d.build(d.fetch_synthetic(d.all_tickers()), notes, synthetic=True)
     payload = d.make_payload(res, notes, synthetic=True)
-    d.write_outputs(payload, tmp_path, tmp_path / "history.csv")
+    report = d.make_report(res, payload)
+    d.write_outputs(payload, tmp_path, tmp_path / "history.csv", report=report)
     assert (tmp_path / "index.html").stat().st_size > 50_000
+    assert (tmp_path / "report.html").stat().st_size > 50_000
+    assert {"SPY", "EFA", "EEM"} <= set(report["report"]["assets"])
+    assert len(report["report"]["coverage"]) == len(d.all_tickers())
     assert not (tmp_path / "history.csv").exists()          # synthetic runs never touch the log
     for a in d.CORE:
         assert payload["assets"][a]["label"] in {"favorable", "neutral", "hostile"}

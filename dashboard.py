@@ -2,11 +2,11 @@
 """
 Leverage-environment dashboard for SPY, EFA and EEM.
 
-Builds one self-contained HTML page (plus a small JSON/CSV record) that tracks
-momentum, volatility, serial correlation and breadth for each ETF, ranks every
-reading against that ETF's own history, and simulates how daily-reset 2x / 3x
+Builds a dashboard page and a fuller detail report (plus a JSON/CSV record) that track
+momentum, volatility, serial correlation and breadth for each ETF, rank every
+reading against that ETF's own history, and simulate how daily-reset 2x / 3x
 exposure has actually compounded. The methodology and every known caveat are
-written into the page itself.
+written into both pages.
 
     python dashboard.py --out site               # live data from Yahoo Finance
     python dashboard.py --out site --synthetic   # made-up data, for offline testing
@@ -56,6 +56,12 @@ SCORE_WEIGHTS = {"momentum": 0.40, "volatility": 0.40, "serial_corr": 0.20}
 FAVORABLE_AT, HOSTILE_AT = 60.0, 40.0
 BACKTEST_HORIZON = 63
 
+# Detail report
+REPORT_HORIZONS = (21, 63, 126, 252)                      # forward windows, trading days
+LEV_LOOKBACKS = ((63, "3 months"), (126, "6 months"), (252, "1 year"),
+                 (756, "3 years"), (1260, "5 years"))
+SCORE_BANDS = (0, 30, 40, 50, 60, 70, 100)
+
 DEFAULT_EUROPE_WEIGHT = 0.70   # used only if the blend weight cannot be fitted
 
 # Breadth components and APPROXIMATE, STATIC index weights (percent). The weights
@@ -92,6 +98,23 @@ ASSETS = {
     },
 }
 CORE = list(ASSETS)
+
+COMPONENT_NAMES = {
+    "XLK": "Technology", "XLF": "Financials", "XLY": "Consumer discretionary",
+    "XLC": "Communication services", "XLV": "Health care", "XLI": "Industrials",
+    "XLP": "Consumer staples", "XLE": "Energy", "XLU": "Utilities", "XLRE": "Real estate",
+    "XLB": "Materials",
+    "EWJ": "Japan", "EWU": "United Kingdom", "EWQ": "France", "EWG": "Germany",
+    "EWL": "Switzerland", "EWA": "Australia", "EWN": "Netherlands", "EWD": "Sweden",
+    "EWP": "Spain", "EWI": "Italy", "EDEN": "Denmark", "EWH": "Hong Kong",
+    "EWS": "Singapore", "EFNL": "Finland", "EWK": "Belgium", "EIS": "Israel",
+    "ENOR": "Norway", "EIRL": "Ireland", "EWO": "Austria", "ENZL": "New Zealand",
+    "FXI": "China (large cap)", "EWT": "Taiwan", "INDA": "India", "EWY": "South Korea",
+    "EWZ": "Brazil", "KSA": "Saudi Arabia", "EZA": "South Africa", "EWW": "Mexico",
+    "UAE": "United Arab Emirates", "EWM": "Malaysia", "EIDO": "Indonesia",
+    "EPOL": "Poland", "THD": "Thailand", "KWT": "Kuwait", "QAT": "Qatar",
+    "TUR": "Turkey", "GREK": "Greece", "ECH": "Chile", "EPHE": "Philippines", "EPU": "Peru",
+}
 
 # (key, label, display format, True if a HIGHER reading is better for leverage)
 METRICS = [
@@ -392,11 +415,13 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
         f["narrow"] = (near_high & narrowing).astype(float).where(f["b12"].notna())
 
         # Daily-reset leverage: trailing 1-year simulation and the forward window for the backtest.
+        f["ret"] = ret
         f["und_1y"] = compound(ret, TRADING_DAYS)
         f["fwd_1x"] = compound(ret, BACKTEST_HORIZON).shift(-BACKTEST_HORIZON)
         for lev in LEVERAGE:
             gross = leveraged_returns(ret, lev)
             net = leveraged_returns(ret, lev, cash, FINANCING_SPREAD, EXPENSE_RATIO)
+            f[f"dg_{lev}x"], f[f"dn_{lev}x"] = gross, net
             f[f"gross_{lev}x"] = compound(gross, TRADING_DAYS)
             f[f"net_{lev}x"] = compound(net, TRADING_DAYS)
             f[f"gap_{lev}x"] = f[f"gross_{lev}x"] - lev * f["und_1y"]
@@ -432,7 +457,7 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
         f["label"] = label.where(f["score"].notna())
 
     return {"frames": frames, "info": info, "asof": asof, "rank_start": rank_start,
-            "cash": cash, "cash_note": cash_note}
+            "cash": cash, "cash_note": cash_note, "px": px}
 
 
 def _num(x, digits=4):
@@ -532,10 +557,131 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
     }
 
 
-def write_outputs(payload: dict, out_dir: Path, history_path: Path | None) -> None:
-    out_dir.mkdir(parents=True, exist_ok=True)
+def _weekly(f: pd.DataFrame, keys: list[str], digits: int = 4) -> tuple[pd.DatetimeIndex, dict]:
+    wk = f.groupby(f.index.to_period("W-FRI")).tail(1)
+    return wk.index, {k: [_num(v, digits) for v in wk[k]] for k in keys}
+
+
+def _fwd_stats(g: pd.DataFrame, top: int) -> dict:
+    """Median outcomes over the rows of `g`, which holds forward-return columns."""
+    if not len(g):
+        return {"days": 0}
+    return {"days": int(len(g)), "fwd_1x": _num(g["f1"].median()), "net": _num(g["fn"].median()),
+            "gap": _num(g["fg"].median()), "win": _num((g["fn"] > 0).mean(), 3),
+            "p5": _num(g["fn"].quantile(0.05))}
+
+
+def make_report(res: dict, payload: dict) -> dict:
+    """Everything the dashboard summarizes, in full: the payload for report.html."""
+    frames, info, px, asof = res["frames"], res["info"], res["px"], res["asof"]
+    rank_start, top = res["rank_start"], LEVERAGE[-1]
+    metric_keys = [m[0] for m in METRICS]
+    extra = ["b12w", "b1w", "und_1y", "score", "fav_momentum", "fav_volatility", "fav_serial"] \
+        + [f"{k}_{L}x" for L in LEVERAGE for k in ("gap", "net")]
+    series, assets = {}, {}
+    for a in CORE:
+        f, meta, cfg = frames[a], info[a], ASSETS[a]
+        shown = f[f.index >= rank_start]
+        dates, raw = _weekly(shown, metric_keys + extra)
+        _, pcts = _weekly(shown, ["p_" + k for k in metric_keys], digits=1)
+        series[a] = {**raw, **pcts}
+        series["dates"] = [str(d.date()) for d in dates]
+
+        lookback = {k: [_num(f[k].iloc[-1 - n]) for n in (21, 63, 252)] for k in metric_keys}
+
+        comps = []
+        for t, w in cfg["breadth"].items():
+            row = {"ticker": t, "name": COMPONENT_NAMES.get(t, ""), "weight": w}
+            if t in px.columns:
+                c = px[t].ffill(limit=5)
+                row.update(m1=_num(momentum(c, MOM_SHORT).iloc[-1]), m12=_num(momentum(c, MOM_LONG).iloc[-1]),
+                           since=str(px[t].first_valid_index().date()))
+            comps.append(row)
+
+        lev = []
+        for n, label in LEV_LOOKBACKS:
+            und = compound(f["ret"], n).iloc[-1]
+            row = {"label": label, "und": _num(und)}
+            for L in LEVERAGE:
+                row[f"naive_{L}"] = _num(L * und)
+                row[f"gross_{L}"] = _num(compound(f[f"dg_{L}x"], n).iloc[-1])
+                row[f"net_{L}"] = _num(compound(f[f"dn_{L}x"], n).iloc[-1])
+            lev.append(row)
+
+        # Forward outcomes, using only dates after the ETF itself began trading.
+        era = (f.index > meta["etf_start"]) & f["label"].notna()
+        by_horizon = {}
+        fwd63 = None
+        for h in REPORT_HORIZONS:
+            f1 = compound(f["ret"], h).shift(-h)
+            fw = pd.DataFrame({"f1": f1, "fn": compound(f[f"dn_{top}x"], h).shift(-h),
+                               "fg": compound(f[f"dg_{top}x"], h).shift(-h) - top * f1})
+            fw = fw[era & fw["fn"].notna()]
+            by_horizon[str(h)] = {lab: _fwd_stats(fw[f["label"].reindex(fw.index) == lab], top)
+                                  for lab in ("favorable", "neutral", "hostile")}
+            if h == BACKTEST_HORIZON:
+                fwd63 = fw
+        score = f["score"].reindex(fwd63.index)
+        bands = []
+        for lo, hi in zip(SCORE_BANDS[:-1], SCORE_BANDS[1:]):
+            g = fwd63[(score >= lo) & ((score < hi) | (hi == SCORE_BANDS[-1]))]
+            bands.append({"band": f"{lo} to {hi}", "share": _num(len(g) / max(len(fwd63), 1), 3),
+                          **_fwd_stats(g, top)})
+        alone = []
+        for key, label, _, higher_better in METRICS:
+            p = f["p_" + key].reindex(fwd63.index)
+            fav = p if higher_better else 100 - p
+            thirds = {"fav": fwd63[fav >= 200 / 3], "mid": fwd63[(fav > 100 / 3) & (fav < 200 / 3)],
+                      "unfav": fwd63[fav <= 100 / 3]}
+            alone.append({"key": key, "label": label,
+                          **{k: _fwd_stats(v, top) for k, v in thirds.items()}})
+
+        lab = f["label"].dropna()
+        changes = lab[lab != lab.shift()]
+        recent = changes[changes.index >= asof - pd.Timedelta(days=365)]
+        prev = lab.shift().reindex(recent.index)
+        assets[a] = {
+            "lookback": lookback, "components": comps, "lev": lev, "by_horizon": by_horizon,
+            "bands": bands, "alone": alone,
+            "streak": int(len(lab.loc[changes.index[-1]:])) if len(changes) else 0,
+            "changes": [{"date": str(d.date()), "from": prev[d] if isinstance(prev[d], str) else None,
+                         "to": recent[d]} for d in recent.index][::-1],
+        }
+
+    roles = {t: "Core ETF" for t in CORE}
+    for a, cfg in ASSETS.items():
+        for t in cfg["proxy"] or ():
+            roles[t] = f"Backfill for {a}"
+        for t in cfg["breadth"]:
+            roles[t] = f"Breadth for {a}: {COMPONENT_NAMES.get(t, t)}"
+    roles[CASH_TICKER] = "Financing rate (13-week T-bill yield)"
+    coverage = []
+    for t, role in roles.items():
+        c = px[t].dropna() if t in px.columns else pd.Series(dtype=float)
+        coverage.append({"ticker": t, "role": role, "first": str(c.index[0].date()) if len(c) else None,
+                         "last": str(c.index[-1].date()) if len(c) else None, "n": int(len(c))})
+
+    out = dict(payload)
+    out["series"] = series
+    out["report"] = {"assets": assets, "coverage": coverage, "horizons": list(REPORT_HORIZONS),
+                     "fetch_start": FETCH_START}
+    return out
+
+
+def render_page(title: str, body: str, script: str, payload: dict) -> str:
     blob = json.dumps(payload, allow_nan=False, separators=(",", ":")).replace("</", "<\\/")
-    (out_dir / "index.html").write_text(HTML.replace("/*__PAYLOAD__*/null", blob), encoding="utf-8")
+    return (PAGE.replace("__TITLE__", title).replace("__CSS__", CSS).replace("__BODY__", body)
+            .replace("__SCRIPT__", JS_COMMON + JS_DOC + script).replace("/*__PAYLOAD__*/null", blob))
+
+
+def write_outputs(payload: dict, out_dir: Path, history_path: Path | None,
+                  report: dict | None = None) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "index.html").write_text(
+        render_page("Leverage Environment", DASH_BODY, DASH_JS, payload), encoding="utf-8")
+    if report is not None:
+        (out_dir / "report.html").write_text(
+            render_page("Leverage Environment: Detail", REPORT_BODY, REPORT_JS, report), encoding="utf-8")
     slim = {k: v for k, v in payload.items() if k != "series"}
     (out_dir / "latest.json").write_text(json.dumps(slim, indent=1), encoding="utf-8")
 
@@ -564,7 +710,7 @@ def write_outputs(payload: dict, out_dir: Path, history_path: Path | None) -> No
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", default="site", help="output folder for index.html and latest.json")
+    ap.add_argument("--out", default="site", help="output folder for index.html, report.html, latest.json")
     ap.add_argument("--history", default="data/history.csv", help="daily log to append to ('' to skip)")
     ap.add_argument("--synthetic", action="store_true", help="use made-up data (offline test)")
     args = ap.parse_args()
@@ -575,7 +721,8 @@ def main() -> None:
         raise SystemExit("No price data could be fetched; refusing to publish.")
     res = build(px, notes, args.synthetic)
     payload = make_payload(res, notes, args.synthetic)
-    write_outputs(payload, Path(args.out), Path(args.history) if args.history else None)
+    write_outputs(payload, Path(args.out), Path(args.history) if args.history else None,
+                  report=make_report(res, payload))
     for a in CORE:
         d = payload["assets"][a]
         print(f"{payload['asof']} {a}: {d['label']} (score {d['score']})")
@@ -584,18 +731,30 @@ def main() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Page template (data is injected as JSON; everything renders in the browser)
+# Page templates (data is injected as JSON; everything renders in the browser)
 # --------------------------------------------------------------------------- #
 
-HTML = r'''<!doctype html>
+PAGE = r'''<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Leverage Environment</title>
+<title>__TITLE__</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/3.6.0/plotly.min.js"></script>
 <style>
-:root{color-scheme:light;--page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;
+__CSS__</style>
+</head>
+<body>
+<main>
+__BODY__</main>
+<script>
+const D = /*__PAYLOAD__*/null;
+__SCRIPT__</script>
+</body>
+</html>
+'''
+
+CSS = r''':root{color-scheme:light;--page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;
 --grid:#e1e0d9;--axis:#c3c2b7;--border:rgba(11,11,11,.10);--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;
 --good:#0ca30c;--warn:#fab219;--crit:#d03b3b;--band:rgba(11,11,11,.05)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;
@@ -652,49 +811,17 @@ button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
 .doc{max-width:82ch}.doc li{margin:5px 0}.doc ul{padding-left:20px;margin:6px 0}
 code{font-size:.92em;background:var(--band);padding:1px 4px;border-radius:4px}
 footer{margin-top:40px;color:var(--muted);font-size:12.5px}
-</style>
-</head>
-<body>
-<main>
-<div id="banner"></div>
-<h1>Leverage Environment</h1>
-<p class="sub">How friendly current conditions are to holding daily-reset 2x or 3x exposure to SPY, EFA and EEM,
-judged by momentum, volatility, serial correlation and breadth. Every reading is shown with its percentile against that
-ETF's own history. <span id="asof"></span></p>
-<p class="small">This is a monitoring tool built on approximations, not investment advice. Read
-<a href="#method">Methodology and caveats</a> before relying on any number here.</p>
-<div id="notes"></div>
+.plot.tall{height:360px}
+.ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0 4px;font-size:13.5px}
+select{font:inherit;font-size:13.5px;padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--ink);max-width:100%}
+.seg{display:flex;gap:4px}
+th.w{white-space:normal;vertical-align:bottom}
+.toc{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13.5px;margin:14px 0 0}
+h3.etf{display:flex;align-items:center;gap:8px;margin-top:26px}
+.up{color:var(--ink)}.muted{color:var(--muted)}
+'''
 
-<section class="cards" id="cards"></section>
-
-<h2>Readings against each ETF's own history</h2>
-<p class="sub">Each cell shows today's value, its percentile, and a bar spanning the 1st to 99th percentile of history:
-the shaded block is the middle half, the tick is the median, the solid dot is today and the hollow dot is one month ago.
-A percentile says how high a reading is, not whether that is good; the word beneath it gives the direction for leverage.</p>
-<div class="scroll"><table id="grid"></table></div>
-
-<h2>How leverage actually compounded over the past year</h2>
-<p class="sub">A simulated daily-reset fund compared with simply multiplying the unlevered return. The compounding
-effect is positive when returns trended and negative when they chopped. This is the outcome the metrics above try to anticipate.</p>
-<div class="scroll"><table id="lev"></table></div>
-
-<h2>History</h2>
-<div class="legend" id="legend"></div>
-<p class="small" id="shade-note"></p>
-<div class="charts" id="charts"></div>
-
-<h2>Does the label mean anything? A point-in-time check</h2>
-<p class="sub" id="bt-intro"></p>
-<div class="scroll"><table id="bt"></table></div>
-
-<h2 id="method">Methodology and caveats</h2>
-<div class="doc" id="doc"></div>
-<footer id="foot"></footer>
-</main>
-
-<script>
-const D = /*__PAYLOAD__*/null;
-const $ = (id) => document.getElementById(id);
+JS_COMMON = r'''const $ = (id) => document.getElementById(id);
 const C = D.config, A = D.order;
 const pct = (x, d = 1) => x == null ? "n/a" : (x * 100).toFixed(d) + "%";
 const spct = (x, d = 1) => x == null ? "n/a" : (x > 0 ? "+" : "") + (x * 100).toFixed(d) + "%";
@@ -717,103 +844,14 @@ $("asof").textContent = "Data through " + D.asof + "; ranked against history sin
 if (D.notes.length) $("notes").innerHTML = '<div class="notes"><strong>Data notes for this run</strong><ul>' +
   D.notes.map((n) => "<li>" + esc(n) + "</li>").join("") + "</ul></div>";
 
-// ---- cards ---------------------------------------------------------------
-$("cards").innerHTML = A.map((a) => {
-  const d = D.assets[a], c = d.cells, L = d.lev;
-  const row = (k, v) => "<dt>" + k + "</dt><dd>" + v + "</dd>";
-  const band = 2 / Math.sqrt(C.sc_window);
-  return '<article class="card"><div class="tk"><i class="sw" style="background:var(' + COLOR[a] + ')"></i>' + a + "</div>" +
-    '<div class="nm">' + d.name + " · " + d.index + "</div>" +
-    '<div class="verdict"><span class="lab"><span class="ico ' + d.label + '">' + (ICON[d.label] || "") + "</span>" + cap(d.label) + "</span>" +
-    '<span class="sc">score ' + (d.score == null ? "n/a" : d.score.toFixed(0)) + " of 100</span></div>" +
-    (d.narrow ? '<span class="flag">⚠ Narrow advance: near its high on weak or falling breadth</span>' : "") +
-    "<dl>" +
-    '<dt class="h">Momentum</dt>' +
-    row("1 month", spct(c.mom_1m.value) + " · " + pctText("mom_1m", c.mom_1m.pct)) +
-    row("12 months", spct(c.mom_12m.value) + " · " + pctText("mom_12m", c.mom_12m.pct)) +
-    row("12-month rank among the three", d.rank_12m + " of " + A.length) +
-    '<dt class="h">Volatility (annualized)</dt>' +
-    row("20-day", pct(c.vol_20.value) + " · " + pctText("vol_20", c.vol_20.pct)) +
-    row("60-day", pct(c.vol_60.value) + " · " + pctText("vol_60", c.vol_60.pct)) +
-    row("Implied yearly drag at 2x / 3x", pct(L["2"].drag) + " / " + pct(L["3"].drag)) +
-    '<dt class="h">Serial correlation (1-year window)</dt>' +
-    row("Lag-1 autocorrelation", num(c.ac1.value) + " (noise band ±" + band.toFixed(2) + ")") +
-    row("Variance ratio 5 / 10 / 20 day", num(c.vr5.value) + " / " + num(c.vr10.value) + " / " + num(c.vr20.value)) +
-    '<dt class="h">Breadth (' + d.b_members + " of " + d.b_total + " " + d.breadth_kind + ")</dt>" +
-    row("Up over 12 months, equal / index weight", pct(c.b12.value, 0) + " / " + pct(d.b12w, 0)) +
-    row("Up over 1 month, equal / index weight", pct(c.b1.value, 0) + " / " + pct(d.b1w, 0)) +
-    "</dl></article>";
-}).join("");
-
-// ---- grid with range bars -------------------------------------------------
-function rangeBar(m, c) {
-  if (!c.q || c.value == null) return "";
-  const lo = c.q[0], hi = c.q[4], x = (v) => 4 + 192 * Math.min(1, Math.max(0, (v - lo) / ((hi - lo) || 1)));
-  const tip = "1st pct " + fmtv(m, lo) + ", median " + fmtv(m, c.q[2]) + ", 99th pct " + fmtv(m, hi) +
-    "; one month ago " + fmtv(m, c.prev) + "; history since " + c.since;
-  return '<svg class="rb" viewBox="0 0 200 16" preserveAspectRatio="none" role="img" aria-label="' + tip + '"><title>' + tip + "</title>" +
-    '<line x1="4" x2="196" y1="8" y2="8" stroke="var(--axis)" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
-    '<rect x="' + x(c.q[1]) + '" y="4" width="' + Math.max(1, x(c.q[3]) - x(c.q[1])) + '" height="8" rx="2" fill="var(--axis)"/>' +
-    '<line x1="' + x(c.q[2]) + '" x2="' + x(c.q[2]) + '" y1="2" y2="14" stroke="var(--muted)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>' +
-    (c.prev == null ? "" : '<ellipse cx="' + x(c.prev) + '" cy="8" rx="2.6" ry="4" fill="var(--surface)" stroke="var(--ink2)" stroke-width="1.2" vector-effect="non-scaling-stroke"/>') +
-    '<ellipse cx="' + x(c.value) + '" cy="8" rx="2.9" ry="4.6" fill="var(--ink)" stroke="var(--surface)" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>';
-}
-const GROUPS = { mom_1m: "Momentum", vol_20: "Volatility", ac1: "Serial correlation", b12: "Breadth" };
-$("grid").innerHTML = "<thead><tr><th>Metric</th>" + A.map((a) => "<th>" + a + "</th>").join("") + "</tr></thead><tbody>" +
-  D.metrics.map((m) => (GROUPS[m.key] ? '<tr><td class="grp" colspan="' + (A.length + 1) + '">' + GROUPS[m.key] + "</td></tr>" : "") +
-    "<tr><td>" + m.label + '<div class="small">' + (m.higher_better ? "higher is better for leverage" : "lower is better for leverage") + "</div></td>" +
-    A.map((a) => {
-      const c = D.assets[a].cells[m.key];
-      if (c.value == null) return '<td class="cell"><span class="p">n/a</span></td>';
-      return '<td class="cell"><span class="v">' + fmtv(m, c.value, m.key.startsWith("mom")) + '</span><span class="p">' + pctText(m.key, c.pct) + "</span>" +
-        (c.fav == null ? "" : '<div class="f"><i class="dot" style="background:' + favColor(c.fav) + '"></i>' + favWord(c.fav) + "</div>") +
-        rangeBar(m, c) + "</td>";
-    }).join("") + "</tr>").join("") + "</tbody>";
-
-// ---- leverage table -------------------------------------------------------
-$("lev").innerHTML = '<thead><tr><th>ETF</th><th class="n">Unlevered, past year</th><th>Leverage</th><th class="n">Simple multiple</th>' +
-  '<th class="n">Simulated, before costs</th><th class="n">Compounding effect</th><th class="n">Simulated, after financing and fees</th></tr></thead><tbody>' +
-  A.map((a) => C.leverage.map((L, i) => {
-    const d = D.assets[a], x = d.lev[String(L)];
-    return "<tr>" + (i ? "" : '<td rowspan="' + C.leverage.length + '"><strong>' + a + '</strong></td><td class="n" rowspan="' + C.leverage.length + '">' + spct(d.und_1y) + "</td>") +
-      "<td>" + L + 'x</td><td class="n">' + spct(x.naive) + '</td><td class="n">' + spct(x.gross) + '</td><td class="n">' + spct(x.gap) + '</td><td class="n">' + spct(x.net) + "</td></tr>";
-  }).join("")).join("") + "</tbody>";
-
-// ---- backtest -------------------------------------------------------------
 const TOP = C.leverage[C.leverage.length - 1];
-$("bt-intro").textContent = "For every past day, the label was computed using only data available on that day, then compared with what a simulated " +
-  "daily-reset fund did over the following " + C.horizon + " trading days. If the label is useful, favorable rows should beat hostile rows. " +
-  "Windows overlap heavily, so the last column gives the rough count of independent periods behind each row.";
-$("bt").innerHTML = '<thead><tr><th>ETF</th><th>Label</th><th class="n">Share of days</th><th class="n">Median 1x</th>' +
-  C.leverage.map((L) => '<th class="n">Median ' + L + "x after costs</th>").join("") +
-  '<th class="n">Median ' + TOP + 'x compounding effect</th><th class="n">' + TOP + 'x positive</th><th class="n">' + TOP + 'x worst 5%</th><th class="n">Independent periods</th></tr></thead><tbody>' +
-  A.map((a) => D.assets[a].backtest.map((r, i) => "<tr>" +
-    (i ? "" : '<td class="nw" rowspan="3"><strong>' + a + '</strong><div class="small">from ' + (D.assets[a].backtest_from || "n/a") + "</div></td>") +
-    '<td class="nw"><span class="ico ' + r.label + '">' + ICON[r.label] + "</span> " + cap(r.label) + '</td><td class="n">' + pct(r.share, 0) + '</td><td class="n">' + spct(r.fwd_1x) + "</td>" +
-    C.leverage.map((L) => '<td class="n">' + spct(r["net_" + L + "x"]) + "</td>").join("") +
-    '<td class="n">' + spct(r["gap_" + TOP + "x"]) + '</td><td class="n">' + pct(r.win, 0) + '</td><td class="n">' + spct(r.p5) + '</td><td class="n">' + r.windows + "</td></tr>").join("")).join("") + "</tbody>";
-
-// ---- charts ---------------------------------------------------------------
-const CHARTS = [
-  { key: "mom_12m", title: "12-month momentum", note: "Total return over 252 trading days", pct: true, zero: 0 },
-  { key: "mom_1m", title: "1-month momentum", note: "Total return over 21 trading days", pct: true, zero: 0 },
-  { key: "vol_60", title: "Volatility, 60-day", note: "Annualized standard deviation of daily returns", pct: true },
-  { key: "vol_20", title: "Volatility, 20-day", note: "Annualized standard deviation of daily returns", pct: true },
-  { key: "vr10", title: "Variance ratio, 10-day", note: "Above 1 = trending, below 1 = choppy; 1-year window", zero: 1 },
-  { key: "ac1", title: "Lag-1 autocorrelation", note: "1-year window; readings inside the noise band are indistinguishable from zero", zero: 0, band: 2 / Math.sqrt(C.sc_window) },
-  { key: "b12", title: "Breadth", note: "Share of sector or country ETFs with a positive 12-month return (equal weight)", pct: true },
-  { key: "gap_" + TOP + "x", title: TOP + "x compounding effect, trailing year", note: "Simulated " + TOP + "x return minus " + TOP + " times the unlevered return, before costs", pct: true, zero: 0 },
-  { key: "score", title: "Composite score", note: "0 to 100; at or above " + C.favorable_at + " is favorable, at or below " + C.hostile_at + " is hostile", zero: 50 },
-];
 const backfilled = A.filter((a) => D.assets[a].proxy);
 const shadeEnd = backfilled.map((a) => D.assets[a].etf_start).sort().pop();
-$("legend").innerHTML = A.map((a) => '<span><i class="line" style="background:var(' + COLOR[a] + ')"></i>' + a + "</span>").join("") +
+const legendHtml = () => A.map((a) => '<span><i class="line" style="background:var(' + COLOR[a] + ')"></i>' + a + "</span>").join("") +
   '<div class="btns" role="group" aria-label="Time range">' + [["1Y", 1], ["5Y", 5], ["10Y", 10], ["All", 0]].map(([t, y]) =>
     '<button data-y="' + y + '" aria-pressed="' + (y === 0) + '">' + t + "</button>").join("") + "</div>";
-$("shade-note").textContent = backfilled.length ? "The shaded era is backfilled from mutual funds (" +
+const shadeNote = () => backfilled.length ? "The shaded era is backfilled from mutual funds (" +
   backfilled.map((a) => a + " before " + D.assets[a].etf_start).join(", ") + ") and is approximate; see the caveats below. Weekly samples." : "Weekly samples.";
-$("charts").innerHTML = CHARTS.map((c, i) => '<div class="chart"><h3>' + c.title + "</h3><p>" + c.note + '</p><div class="plot" id="pl' + i + '"></div></div>').join("");
-
 let years = 0;
 function xRange() {
   const d = D.series.dates, end = d[d.length - 1];
@@ -822,42 +860,45 @@ function xRange() {
   const iso = s.toISOString().slice(0, 10);
   return [iso < d[0] ? d[0] : iso, end];
 }
-function draw() {
-  if (!window.Plotly) { $("charts").innerHTML = '<p class="small">Charts need the Plotly library, which could not be loaded. The tables above are unaffected.</p>'; return; }
+// One line per ETF. c: {pct, zero, band, lo, hi}; get(a) returns that ETF's values.
+function plotLines(id, c, get) {
   const [x0, x1] = xRange(), ink2 = css("--ink2"), grid = css("--grid"), axis = css("--axis"), band = css("--band");
-  CHARTS.forEach((c, i) => {
-    const k = c.pct ? 100 : 1; let lo = Infinity, hi = -Infinity;
-    const traces = A.map((a) => {
-      const y = D.series[a][c.key].map((v) => v == null ? null : v * k);
-      D.series.dates.forEach((d, j) => { if (d >= x0 && d <= x1 && y[j] != null) { lo = Math.min(lo, y[j]); hi = Math.max(hi, y[j]); } });
-      return { x: D.series.dates, y, name: a, mode: "lines", line: { color: css(COLOR[a]), width: 1.6 },
-        hovertemplate: "%{y:." + (c.pct ? 1 : 2) + "f}" + (c.pct ? "%" : "") + "<extra>" + a + "</extra>" };
-    });
-    if (c.band) { lo = Math.min(lo, -c.band); hi = Math.max(hi, c.band); }
-    if (!isFinite(lo)) { lo = 0; hi = 1; }
-    const pad = (hi - lo) * 0.07 || 1, shapes = [];
-    if (shadeEnd && shadeEnd > x0) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: x0, x1: shadeEnd, y0: 0, y1: 1, fillcolor: band, line: { width: 0 }, layer: "below" });
-    if (c.band) shapes.push({ type: "rect", xref: "paper", yref: "y", x0: 0, x1: 1, y0: -c.band, y1: c.band, fillcolor: band, line: { width: 0 }, layer: "below" });
-    if (c.zero != null) shapes.push({ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: c.zero * k, y1: c.zero * k, line: { color: axis, width: 1 }, layer: "below" });
-    Plotly.react("pl" + i, traces, {
-      margin: { l: 46, r: 12, t: 8, b: 26 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", showlegend: false,
-      hovermode: "x unified", hoverlabel: { bgcolor: css("--surface"), bordercolor: axis, font: { color: css("--ink"), size: 12 } },
-      font: { family: 'system-ui,-apple-system,"Segoe UI",sans-serif', size: 11, color: ink2 },
-      xaxis: { range: [x0, x1], showgrid: false, linecolor: axis, tickcolor: axis, fixedrange: true },
-      yaxis: { range: [lo - pad, hi + pad], gridcolor: grid, zeroline: false, ticksuffix: c.pct ? "%" : "", fixedrange: true },
-      shapes,
-    }, { displayModeBar: false, responsive: true });
+  const k = c.pct ? 100 : 1; let lo = Infinity, hi = -Infinity;
+  const traces = A.map((a) => {
+    const y = get(a).map((v) => v == null ? null : v * k);
+    D.series.dates.forEach((d, j) => { if (d >= x0 && d <= x1 && y[j] != null) { lo = Math.min(lo, y[j]); hi = Math.max(hi, y[j]); } });
+    return { x: D.series.dates, y, name: a, mode: "lines", line: { color: css(COLOR[a]), width: 1.6 },
+      hovertemplate: "%{y:." + (c.pct ? 1 : 2) + "f}" + (c.pct ? "%" : "") + "<extra>" + a + "</extra>" };
   });
+  if (c.band) { lo = Math.min(lo, -c.band); hi = Math.max(hi, c.band); }
+  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  const pad = (hi - lo) * 0.07 || 1, shapes = [];
+  if (shadeEnd && shadeEnd > x0) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: x0, x1: shadeEnd, y0: 0, y1: 1, fillcolor: band, line: { width: 0 }, layer: "below" });
+  if (c.band) shapes.push({ type: "rect", xref: "paper", yref: "y", x0: 0, x1: 1, y0: -c.band, y1: c.band, fillcolor: band, line: { width: 0 }, layer: "below" });
+  if (c.zero != null) shapes.push({ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: c.zero * k, y1: c.zero * k, line: { color: axis, width: 1 }, layer: "below" });
+  Plotly.react(id, traces, {
+    margin: { l: 46, r: 12, t: 8, b: 26 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", showlegend: false,
+    hovermode: "x unified", hoverlabel: { bgcolor: css("--surface"), bordercolor: axis, font: { color: css("--ink"), size: 12 } },
+    font: { family: 'system-ui,-apple-system,"Segoe UI",sans-serif', size: 11, color: ink2 },
+    xaxis: { range: [x0, x1], showgrid: false, linecolor: axis, tickcolor: axis, fixedrange: true },
+    yaxis: { range: [lo - pad, hi + pad], gridcolor: grid, zeroline: false, ticksuffix: c.pct ? "%" : "", fixedrange: true },
+    shapes,
+  }, { displayModeBar: false, responsive: true });
 }
-document.querySelectorAll(".btns button").forEach((b) => b.addEventListener("click", () => {
-  years = +b.dataset.y;
-  document.querySelectorAll(".btns button").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
-  draw();
-}));
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
-draw();
+function bindRange(draw) {
+  document.querySelectorAll(".btns button").forEach((b) => b.addEventListener("click", () => {
+    years = +b.dataset.y;
+    document.querySelectorAll(".btns button").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+    draw();
+  }));
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+}
+const NO_PLOTLY = '<p class="small">Charts need the Plotly library, which could not be loaded. The tables are unaffected.</p>';
+'''
 
-// ---- documentation --------------------------------------------------------
+JS_DOC = r'''
+// ---- documentation (shared by both pages) ----------------------------------
+function renderDoc(extra) {
 const efa = D.assets.EFA, eem = D.assets.EEM, W = C.weights;
 const stale = (d) => d.stale_ac_backfill == null ? "" : " In this data the lag-1 autocorrelation of daily returns is " +
   num(d.stale_ac_backfill) + " in the backfilled era against " + num(d.stale_ac_etf) + " once the ETF trades.";
@@ -945,11 +986,316 @@ $("doc").innerHTML = `
 <li>The score weights and thresholds were not tuned to this history, but they were chosen with knowledge of how markets behaved, so this is not a clean out-of-sample test. The sample contains only a handful of major bear markets, and those few episodes dominate the hostile rows.</li>
 <li>Adjacent days share almost all of their forward window. The independent-period count is the honest sample size; differences between rows with few independent periods are not reliable.</li>
 <li>Past simulated results do not indicate future results.</li>
-</ul>`;
+</ul>` + (extra || "");
 $("foot").textContent = "Generated " + D.generated + " · data through " + D.asof + " · source: Yahoo Finance via yfinance";
-</script>
-</body>
-</html>
+}
+'''
+
+DASH_BODY = r'''<div id="banner"></div>
+<h1>Leverage Environment</h1>
+<p class="sub">How friendly current conditions are to holding daily-reset 2x or 3x exposure to SPY, EFA and EEM,
+judged by momentum, volatility, serial correlation and breadth. Every reading is shown with its percentile against that
+ETF's own history. <span id="asof"></span></p>
+<p class="small">This is a monitoring tool built on approximations, not investment advice. Read
+<a href="#method">Methodology and caveats</a> before relying on any number here.
+For every result in full, open the <a href="report.html">detail report</a>.</p>
+<div id="notes"></div>
+
+<section class="cards" id="cards"></section>
+
+<h2>Readings against each ETF's own history</h2>
+<p class="sub">Each cell shows today's value, its percentile, and a bar spanning the 1st to 99th percentile of history:
+the shaded block is the middle half, the tick is the median, the solid dot is today and the hollow dot is one month ago.
+A percentile says how high a reading is, not whether that is good; the word beneath it gives the direction for leverage.</p>
+<div class="scroll"><table id="grid"></table></div>
+
+<h2>How leverage actually compounded over the past year</h2>
+<p class="sub">A simulated daily-reset fund compared with simply multiplying the unlevered return. The compounding
+effect is positive when returns trended and negative when they chopped. This is the outcome the metrics above try to anticipate.</p>
+<div class="scroll"><table id="lev"></table></div>
+
+<h2>History</h2>
+<div class="legend" id="legend"></div>
+<p class="small" id="shade-note"></p>
+<div class="charts" id="charts"></div>
+
+<h2>Does the label mean anything? A point-in-time check</h2>
+<p class="sub" id="bt-intro"></p>
+<div class="scroll"><table id="bt"></table></div>
+
+<h2 id="method">Methodology and caveats</h2>
+<div class="doc" id="doc"></div>
+<footer id="foot"></footer>
+'''
+
+DASH_JS = r'''// ---- cards ---------------------------------------------------------------
+$("cards").innerHTML = A.map((a) => {
+  const d = D.assets[a], c = d.cells, L = d.lev;
+  const row = (k, v) => "<dt>" + k + "</dt><dd>" + v + "</dd>";
+  const band = 2 / Math.sqrt(C.sc_window);
+  return '<article class="card"><div class="tk"><i class="sw" style="background:var(' + COLOR[a] + ')"></i>' + a + "</div>" +
+    '<div class="nm">' + d.name + " · " + d.index + "</div>" +
+    '<div class="verdict"><span class="lab"><span class="ico ' + d.label + '">' + (ICON[d.label] || "") + "</span>" + cap(d.label) + "</span>" +
+    '<span class="sc">score ' + (d.score == null ? "n/a" : d.score.toFixed(0)) + " of 100</span></div>" +
+    (d.narrow ? '<span class="flag">⚠ Narrow advance: near its high on weak or falling breadth</span>' : "") +
+    "<dl>" +
+    '<dt class="h">Momentum</dt>' +
+    row("1 month", spct(c.mom_1m.value) + " · " + pctText("mom_1m", c.mom_1m.pct)) +
+    row("12 months", spct(c.mom_12m.value) + " · " + pctText("mom_12m", c.mom_12m.pct)) +
+    row("12-month rank among the three", d.rank_12m + " of " + A.length) +
+    '<dt class="h">Volatility (annualized)</dt>' +
+    row("20-day", pct(c.vol_20.value) + " · " + pctText("vol_20", c.vol_20.pct)) +
+    row("60-day", pct(c.vol_60.value) + " · " + pctText("vol_60", c.vol_60.pct)) +
+    row("Implied yearly drag at 2x / 3x", pct(L["2"].drag) + " / " + pct(L["3"].drag)) +
+    '<dt class="h">Serial correlation (1-year window)</dt>' +
+    row("Lag-1 autocorrelation", num(c.ac1.value) + " (noise band ±" + band.toFixed(2) + ")") +
+    row("Variance ratio 5 / 10 / 20 day", num(c.vr5.value) + " / " + num(c.vr10.value) + " / " + num(c.vr20.value)) +
+    '<dt class="h">Breadth (' + d.b_members + " of " + d.b_total + " " + d.breadth_kind + ")</dt>" +
+    row("Up over 12 months, equal / index weight", pct(c.b12.value, 0) + " / " + pct(d.b12w, 0)) +
+    row("Up over 1 month, equal / index weight", pct(c.b1.value, 0) + " / " + pct(d.b1w, 0)) +
+    "</dl></article>";
+}).join("");
+
+// ---- grid with range bars -------------------------------------------------
+function rangeBar(m, c) {
+  if (!c.q || c.value == null) return "";
+  const lo = c.q[0], hi = c.q[4], x = (v) => 4 + 192 * Math.min(1, Math.max(0, (v - lo) / ((hi - lo) || 1)));
+  const tip = "1st pct " + fmtv(m, lo) + ", median " + fmtv(m, c.q[2]) + ", 99th pct " + fmtv(m, hi) +
+    "; one month ago " + fmtv(m, c.prev) + "; history since " + c.since;
+  return '<svg class="rb" viewBox="0 0 200 16" preserveAspectRatio="none" role="img" aria-label="' + tip + '"><title>' + tip + "</title>" +
+    '<line x1="4" x2="196" y1="8" y2="8" stroke="var(--axis)" stroke-width="2" vector-effect="non-scaling-stroke"/>' +
+    '<rect x="' + x(c.q[1]) + '" y="4" width="' + Math.max(1, x(c.q[3]) - x(c.q[1])) + '" height="8" rx="2" fill="var(--axis)"/>' +
+    '<line x1="' + x(c.q[2]) + '" x2="' + x(c.q[2]) + '" y1="2" y2="14" stroke="var(--muted)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>' +
+    (c.prev == null ? "" : '<ellipse cx="' + x(c.prev) + '" cy="8" rx="2.6" ry="4" fill="var(--surface)" stroke="var(--ink2)" stroke-width="1.2" vector-effect="non-scaling-stroke"/>') +
+    '<ellipse cx="' + x(c.value) + '" cy="8" rx="2.9" ry="4.6" fill="var(--ink)" stroke="var(--surface)" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>';
+}
+const GROUPS = { mom_1m: "Momentum", vol_20: "Volatility", ac1: "Serial correlation", b12: "Breadth" };
+$("grid").innerHTML = "<thead><tr><th>Metric</th>" + A.map((a) => "<th>" + a + "</th>").join("") + "</tr></thead><tbody>" +
+  D.metrics.map((m) => (GROUPS[m.key] ? '<tr><td class="grp" colspan="' + (A.length + 1) + '">' + GROUPS[m.key] + "</td></tr>" : "") +
+    "<tr><td>" + m.label + '<div class="small">' + (m.higher_better ? "higher is better for leverage" : "lower is better for leverage") + "</div></td>" +
+    A.map((a) => {
+      const c = D.assets[a].cells[m.key];
+      if (c.value == null) return '<td class="cell"><span class="p">n/a</span></td>';
+      return '<td class="cell"><span class="v">' + fmtv(m, c.value, m.key.startsWith("mom")) + '</span><span class="p">' + pctText(m.key, c.pct) + "</span>" +
+        (c.fav == null ? "" : '<div class="f"><i class="dot" style="background:' + favColor(c.fav) + '"></i>' + favWord(c.fav) + "</div>") +
+        rangeBar(m, c) + "</td>";
+    }).join("") + "</tr>").join("") + "</tbody>";
+
+// ---- leverage table -------------------------------------------------------
+$("lev").innerHTML = '<thead><tr><th>ETF</th><th class="n">Unlevered, past year</th><th>Leverage</th><th class="n">Simple multiple</th>' +
+  '<th class="n">Simulated, before costs</th><th class="n">Compounding effect</th><th class="n">Simulated, after financing and fees</th></tr></thead><tbody>' +
+  A.map((a) => C.leverage.map((L, i) => {
+    const d = D.assets[a], x = d.lev[String(L)];
+    return "<tr>" + (i ? "" : '<td rowspan="' + C.leverage.length + '"><strong>' + a + '</strong></td><td class="n" rowspan="' + C.leverage.length + '">' + spct(d.und_1y) + "</td>") +
+      "<td>" + L + 'x</td><td class="n">' + spct(x.naive) + '</td><td class="n">' + spct(x.gross) + '</td><td class="n">' + spct(x.gap) + '</td><td class="n">' + spct(x.net) + "</td></tr>";
+  }).join("")).join("") + "</tbody>";
+
+// ---- backtest -------------------------------------------------------------
+$("bt-intro").textContent = "For every past day, the label was computed using only data available on that day, then compared with what a simulated " +
+  "daily-reset fund did over the following " + C.horizon + " trading days. If the label is useful, favorable rows should beat hostile rows. " +
+  "Windows overlap heavily, so the last column gives the rough count of independent periods behind each row.";
+$("bt").innerHTML = '<thead><tr><th>ETF</th><th>Label</th><th class="n">Share of days</th><th class="n">Median 1x</th>' +
+  C.leverage.map((L) => '<th class="n">Median ' + L + "x after costs</th>").join("") +
+  '<th class="n">Median ' + TOP + 'x compounding effect</th><th class="n">' + TOP + 'x positive</th><th class="n">' + TOP + 'x worst 5%</th><th class="n">Independent periods</th></tr></thead><tbody>' +
+  A.map((a) => D.assets[a].backtest.map((r, i) => "<tr>" +
+    (i ? "" : '<td class="nw" rowspan="3"><strong>' + a + '</strong><div class="small">from ' + (D.assets[a].backtest_from || "n/a") + "</div></td>") +
+    '<td class="nw"><span class="ico ' + r.label + '">' + ICON[r.label] + "</span> " + cap(r.label) + '</td><td class="n">' + pct(r.share, 0) + '</td><td class="n">' + spct(r.fwd_1x) + "</td>" +
+    C.leverage.map((L) => '<td class="n">' + spct(r["net_" + L + "x"]) + "</td>").join("") +
+    '<td class="n">' + spct(r["gap_" + TOP + "x"]) + '</td><td class="n">' + pct(r.win, 0) + '</td><td class="n">' + spct(r.p5) + '</td><td class="n">' + r.windows + "</td></tr>").join("")).join("") + "</tbody>";
+
+const CHARTS = [
+  { key: "mom_12m", title: "12-month momentum", note: "Total return over 252 trading days", pct: true, zero: 0 },
+  { key: "mom_1m", title: "1-month momentum", note: "Total return over 21 trading days", pct: true, zero: 0 },
+  { key: "vol_60", title: "Volatility, 60-day", note: "Annualized standard deviation of daily returns", pct: true },
+  { key: "vol_20", title: "Volatility, 20-day", note: "Annualized standard deviation of daily returns", pct: true },
+  { key: "vr10", title: "Variance ratio, 10-day", note: "Above 1 = trending, below 1 = choppy; 1-year window", zero: 1 },
+  { key: "ac1", title: "Lag-1 autocorrelation", note: "1-year window; readings inside the noise band are indistinguishable from zero", zero: 0, band: 2 / Math.sqrt(C.sc_window) },
+  { key: "b12", title: "Breadth", note: "Share of sector or country ETFs with a positive 12-month return (equal weight)", pct: true },
+  { key: "gap_" + TOP + "x", title: TOP + "x compounding effect, trailing year", note: "Simulated " + TOP + "x return minus " + TOP + " times the unlevered return, before costs", pct: true, zero: 0 },
+  { key: "score", title: "Composite score", note: "0 to 100; at or above " + C.favorable_at + " is favorable, at or below " + C.hostile_at + " is hostile", zero: 50 },
+];
+$("legend").innerHTML = legendHtml();
+$("shade-note").textContent = shadeNote();
+$("charts").innerHTML = CHARTS.map((c, i) => '<div class="chart"><h3>' + c.title + "</h3><p>" + c.note + '</p><div class="plot" id="pl' + i + '"></div></div>').join("");
+function draw() {
+  if (!window.Plotly) { $("charts").innerHTML = NO_PLOTLY; return; }
+  CHARTS.forEach((c, i) => plotLines("pl" + i, c, (a) => D.series[a][c.key]));
+}
+bindRange(draw);
+draw();
+renderDoc("");
+'''
+
+REPORT_BODY = r'''<div id="banner"></div>
+<h1>Leverage Environment: full detail</h1>
+<p class="sub">Every result behind the <a href="index.html">dashboard</a>: all readings with their history, breadth by
+component, the leverage simulation over several lookbacks, and how the label, the score and each metric have lined up
+with later leveraged returns. <span id="asof"></span></p>
+<p class="small">This is a monitoring tool built on approximations, not investment advice. Read
+<a href="#method">Methodology and caveats</a> before relying on any number here.</p>
+<div id="notes"></div>
+<nav class="toc" aria-label="Sections"><a href="#s-sum">Summary</a><a href="#s-full">All readings</a><a href="#s-ex">History explorer</a>
+<a href="#s-comps">Breadth by component</a><a href="#s-lev">Leverage simulation</a><a href="#s-bth">Label by horizon</a>
+<a href="#s-btb">Score bands</a><a href="#s-btm">Each metric alone</a><a href="#s-chg">Label changes</a><a href="#s-cov">Data coverage</a>
+<a href="#method">Methodology and caveats</a></nav>
+
+<h2 id="s-sum">Summary</h2>
+<p class="sub">The score is a weighted blend of three components, each a 0 to 100 favorability reading built from percentiles.</p>
+<div class="scroll"><table id="sum"></table></div>
+
+<h2 id="s-full">All readings</h2>
+<p class="sub">Today's value with its percentile, where it stood one month, three months and one year ago, and the
+spread of its own history. Twelve-month momentum is reported as a quintile because its history holds few independent observations.</p>
+<div id="full"></div>
+
+<h2 id="s-ex">History explorer</h2>
+<p class="sub">Any series over time. For the ten metrics you can switch between the raw value and its point-in-time percentile.</p>
+<div class="ctl"><label for="sel">Series</label><select id="sel"></select>
+<div class="seg" role="group" aria-label="Show"><button id="bv" aria-pressed="true">Value</button><button id="bp" aria-pressed="false">Percentile</button></div></div>
+<div class="legend" id="legend"></div>
+<p class="small" id="shade-note"></p>
+<div class="chart"><div class="plot tall" id="ex"></div></div>
+
+<h2 id="s-comps">Breadth by component</h2>
+<p class="sub">The individual sector and country ETFs behind each breadth reading. Weights are approximate and fixed (see caveats).</p>
+<div id="comps"></div>
+
+<h2 id="s-lev">Leverage simulation across lookbacks</h2>
+<p class="sub">Simulated daily-reset funds over several trailing periods, as cumulative returns. "Simple multiple" is the
+unlevered return times the leverage; the gap between it and the simulated figure is the compounding effect.</p>
+<div class="scroll"><table id="levh"></table></div>
+
+<h2 id="s-bth">The label against later returns, by horizon</h2>
+<p class="sub" id="bth-intro"></p>
+<div class="scroll"><table id="bth"></table></div>
+
+<h2 id="s-btb">Score bands against later returns</h2>
+<p class="sub" id="btb-intro"></p>
+<div class="scroll"><table id="btb"></table></div>
+
+<h2 id="s-btm">Each metric by itself</h2>
+<p class="sub" id="btm-intro"></p>
+<div class="scroll"><table id="btm"></table></div>
+
+<h2 id="s-chg">Label changes in the past year</h2>
+<div id="chg"></div>
+
+<h2 id="s-cov">Data coverage</h2>
+<p class="sub">Every series fetched for this run and how far back it goes. Check here that the backfill funds and breadth components reach as far as expected.</p>
+<div class="scroll"><table id="cov"></table></div>
+
+<h2 id="method">Methodology and caveats</h2>
+<div class="doc" id="doc"></div>
+<footer id="foot"></footer>
+'''
+
+REPORT_JS = r'''
+// ---- detail report ----------------------------------------------------------
+const R = D.report, M = D.metrics;
+const lab = (l) => l ? '<span class="ico ' + l + '">' + ICON[l] + "</span> " + cap(l) : "n/a";
+// heads: [text, numeric?]; rows: arrays of cell html
+function tbl(id, heads, rows, el) {
+  const html = "<thead><tr>" + heads.map((h) => '<th class="w' + (h[1] ? " n" : "") + '">' + h[0] + "</th>").join("") + "</tr></thead><tbody>" +
+    rows.map((r) => "<tr>" + r.map((c, i) => "<td" + (heads[i][1] ? ' class="n"' : ' class="nw"') + ">" + (c == null ? "" : c) + "</td>").join("") + "</tr>").join("") + "</tbody>";
+  if (el) return '<div class="scroll"><table>' + html + "</table></div>";
+  $(id).innerHTML = html;
+}
+const etfHead = (a) => '<h3 class="etf"><i class="sw" style="background:var(' + COLOR[a] + ')"></i>' + a + ' <span class="small">' + D.assets[a].name + " · " + D.assets[a].index + "</span></h3>";
+const first = (a, i) => i ? "" : "<strong>" + a + "</strong>";
+const f0 = (x) => x == null ? "n/a" : x.toFixed(0);
+
+tbl("sum", [["ETF"], ["Label"], ["Score", 1], ["Momentum component", 1], ["Volatility component", 1], ["Serial-correlation component", 1],
+  ["Trading days in this label", 1], ["12-month rank", 1], ["Narrow-advance flag"]],
+  A.map((a) => { const d = D.assets[a]; return ["<strong>" + a + "</strong>", lab(d.label), f0(d.score), f0(d.fav.momentum), f0(d.fav.volatility), f0(d.fav.serial),
+    R.assets[a].streak, d.rank_12m + " of " + A.length, d.narrow ? "⚠ Yes" : "No"]; }));
+
+$("full").innerHTML = A.map((a) => etfHead(a) + tbl(null,
+  [["Metric"], ["Today", 1], ["Percentile"], ["For leverage"], ["1 month ago", 1], ["3 months ago", 1], ["1 year ago", 1],
+   ["1st pct", 1], ["25th", 1], ["Median", 1], ["75th", 1], ["99th pct", 1], ["Ranked since"], ["Observations", 1]],
+  M.map((m) => { const c = D.assets[a].cells[m.key], lb = R.assets[a].lookback[m.key], s = m.key.startsWith("mom"), q = c.q || [];
+    return [m.label, fmtv(m, c.value, s), pctText(m.key, c.pct), c.fav == null ? "" : '<i class="dot" style="background:' + favColor(c.fav) + '"></i> ' + favWord(c.fav),
+      fmtv(m, lb[0], s), fmtv(m, lb[1], s), fmtv(m, lb[2], s), fmtv(m, q[0], s), fmtv(m, q[1], s), fmtv(m, q[2], s), fmtv(m, q[3], s), fmtv(m, q[4], s),
+      c.since || "n/a", c.n.toLocaleString()]; }), true)).join("");
+
+// explorer
+const OPTS = M.map((m) => ({ key: m.key, label: m.label, pct: m.fmt === "pct", hasP: true,
+  zero: m.key.startsWith("mom") ? 0 : m.key.startsWith("vr") ? 1 : m.key === "ac1" ? 0 : null, band: m.key === "ac1" ? 2 / Math.sqrt(C.sc_window) : null }))
+  .concat([
+    { key: "b12w", label: "Breadth: up over 12 months, index weight", pct: true },
+    { key: "b1w", label: "Breadth: up over 1 month, index weight", pct: true },
+    { key: "score", label: "Composite score", zero: 50 },
+    { key: "fav_momentum", label: "Score component: momentum", zero: 50 },
+    { key: "fav_volatility", label: "Score component: volatility", zero: 50 },
+    { key: "fav_serial", label: "Score component: serial correlation", zero: 50 },
+    { key: "und_1y", label: "Unlevered return, trailing year", pct: true, zero: 0 },
+  ], C.leverage.flatMap((L) => [
+    { key: "gap_" + L + "x", label: L + "x compounding effect, trailing year (before costs)", pct: true, zero: 0 },
+    { key: "net_" + L + "x", label: L + "x simulated return after costs, trailing year", pct: true, zero: 0 },
+  ]));
+$("sel").innerHTML = OPTS.map((o, i) => '<option value="' + i + '">' + o.label + "</option>").join("");
+$("legend").innerHTML = legendHtml();
+$("shade-note").textContent = shadeNote();
+let showP = false;
+function draw() {
+  if (!window.Plotly) { $("ex").outerHTML = NO_PLOTLY; return; }
+  const o = OPTS[+$("sel").value], p = showP && o.hasP;
+  $("bp").disabled = !o.hasP; $("bv").setAttribute("aria-pressed", String(!p)); $("bp").setAttribute("aria-pressed", String(p));
+  plotLines("ex", p ? { zero: 50 } : o, (a) => D.series[a][(p ? "p_" : "") + o.key]);
+}
+$("sel").addEventListener("change", draw);
+$("bv").addEventListener("click", () => { showP = false; draw(); });
+$("bp").addEventListener("click", () => { showP = true; draw(); });
+bindRange(draw);
+draw();
+
+$("comps").innerHTML = A.map((a) => { const d = D.assets[a], cs = R.assets[a].components;
+  return etfHead(a) + '<p class="small">' + cs.filter((c) => c.m12 > 0).length + " of " + cs.filter((c) => c.m12 != null).length + " up over 12 months; " +
+    cs.filter((c) => c.m1 > 0).length + " of " + cs.filter((c) => c.m1 != null).length + " up over 1 month.</p>" +
+    tbl(null, [["Component"], ["Ticker"], ["Approx. weight", 1], ["1-month return", 1], ["12-month return", 1], ["Data since"]],
+      cs.map((c) => [esc(c.name), c.ticker, c.weight + "%", c.since ? spct(c.m1) : "no data", c.since ? spct(c.m12) : "no data", c.since || "n/a"]), true); }).join("");
+
+tbl("levh", [["ETF"], ["Lookback"], ["Unlevered", 1]].concat(C.leverage.flatMap((L) => [[L + "x simple multiple", 1], [L + "x simulated, before costs", 1], [L + "x simulated, after costs", 1]])),
+  A.flatMap((a) => R.assets[a].lev.map((r, i) => [first(a, i), r.label, spct(r.und)].concat(
+    C.leverage.flatMap((L) => [spct(r["naive_" + L]), spct(r["gross_" + L]), spct(r["net_" + L])])))));
+
+const HS = R.horizons;
+$("bth-intro").textContent = "For every past day after each ETF began trading, the label as it stood that day against the simulated " + TOP +
+  "x fund over the following " + HS.join(", ") + " trading days. Each horizon shows the median return after costs and the median compounding effect " +
+  "(simulated return before costs minus " + TOP + " times the unlevered return). If the label is useful, favorable rows should beat hostile rows at every horizon.";
+tbl("bth", [["ETF"], ["Label"], ["Days", 1]].concat(HS.flatMap((h) => [[h + " days: " + TOP + "x after costs", 1], [h + " days: effect", 1]])),
+  A.flatMap((a) => ["favorable", "neutral", "hostile"].map((l, i) => [first(a, i), lab(l), (R.assets[a].by_horizon[String(C.horizon)][l].days || 0).toLocaleString()].concat(
+    HS.flatMap((h) => { const r = R.assets[a].by_horizon[String(h)][l]; return [spct(r.net), spct(r.gap)]; })))));
+
+$("btb-intro").textContent = "The same check by score band over the following " + C.horizon + " trading days, to show whether outcomes improve steadily with the score " +
+  "or only at the extremes. Independent periods is the number of days divided by the horizon: the honest sample size.";
+tbl("btb", [["ETF"], ["Score"], ["Share of days", 1], ["Median 1x", 1], ["Median " + TOP + "x after costs", 1], ["Median " + TOP + "x compounding effect", 1],
+  [TOP + "x positive", 1], [TOP + "x worst 5%", 1], ["Independent periods", 1]],
+  A.flatMap((a) => R.assets[a].bands.map((r, i) => [first(a, i), r.band, pct(r.share, 0), spct(r.fwd_1x), spct(r.net), spct(r.gap), pct(r.win, 0), spct(r.p5), Math.floor(r.days / C.horizon)])));
+
+$("btm-intro").textContent = "Each metric taken alone: days are split into thirds by that metric's favorability percentile as it stood at the time, and compared on the following " +
+  C.horizon + " trading days. The spread is the favorable third minus the unfavorable third; a metric that carries information should show a positive spread on all three ETFs.";
+tbl("btm", [["ETF"], ["Metric"], [TOP + "x after costs: favorable third", 1], ["Middle third", 1], ["Unfavorable third", 1], ["Spread", 1],
+  ["Compounding effect: favorable third", 1], ["Middle third", 1], ["Unfavorable third", 1], ["Spread", 1]],
+  A.flatMap((a) => R.assets[a].alone.map((r, i) => { const d = (k) => r.fav[k] == null || r.unfav[k] == null ? null : r.fav[k] - r.unfav[k];
+    return [first(a, i), r.label, spct(r.fav.net), spct(r.mid.net), spct(r.unfav.net), spct(d("net")), spct(r.fav.gap), spct(r.mid.gap), spct(r.unfav.gap), spct(d("gap"))]; })));
+
+$("chg").innerHTML = A.map((a) => { const r = R.assets[a], d = D.assets[a];
+  return etfHead(a) + '<p class="small">' + cap(d.label) + " for the last " + r.streak + " trading days.</p>" +
+    (r.changes.length ? tbl(null, [["Date"], ["From"], ["To"]], r.changes.map((c) => [c.date, lab(c.from), lab(c.to)]), true) : '<p class="small">No label changes in the past year.</p>'); }).join("");
+
+tbl("cov", [["Ticker"], ["Used for"], ["First date"], ["Last date"], ["Trading days", 1]],
+  R.coverage.map((c) => ["<strong>" + c.ticker + "</strong>", esc(c.role), c.first || "no data", c.last || "no data", c.n.toLocaleString()]));
+
+renderDoc(`
+<h3>Reading the detail report</h3>
+<ul>
+<li>The tables that compare a label, a score band or a single metric with later returns slice one history many ways. With this many slices, some will look meaningful by chance. Give weight only to patterns that hold across all three ETFs and across horizons.</li>
+<li>Longer horizons have fewer independent periods: divide the day count by the horizon. A ${HS[HS.length - 1]}-day result over a 20-year history rests on roughly 20 independent periods split across the labels.</li>
+<li>All forward-return tables use only dates after each ETF began trading. The percentiles behind the labels still rank against the full history, including the backfilled era.</li>
+<li>In the multi-year leverage table, the simple multiple is a reference point, not something obtainable: over long periods compounding makes a daily-reset fund's return diverge widely from it in either direction.</li>
+<li>Data requests start at ${R.fetch_start}, so a first date equal to the first trading day of that year means the series is older than shown.</li>
+<li>History charts and the explorer use weekly samples (the last trading day of each week), so brief spikes within a week may not appear. Tables use daily data.</li>
+</ul>`);
 '''
 
 if __name__ == "__main__":

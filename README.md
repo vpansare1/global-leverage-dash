@@ -16,7 +16,16 @@ against that ETF's own history since 1998:
 It also simulates how a daily-reset 2x and 3x fund actually compounded over the
 past year, and checks the composite label against what followed historically.
 
-**The full methodology and every caveat are written into the page itself**, under
+Each run produces two pages:
+
+- **`site/index.html`, the dashboard:** today's readings, the comparison grid, and history charts.
+- **`site/report.html`, the detail report:** every reading with its history, a
+  chart explorer for any series (raw value or percentile), breadth by individual
+  sector and country, the leverage simulation over 3 months to 5 years, the
+  label, score bands and each metric checked against later returns at several
+  horizons, recent label changes, and how far back every data series goes.
+
+**The full methodology and every caveat are written into both pages**, under
 "Methodology and caveats", using the actual numbers from each run. Read that
 section before relying on anything the page shows. It is a monitoring tool, not
 investment advice.
@@ -38,9 +47,12 @@ Things to know:
 - On a free GitHub account, Pages only works for public repositories, so both the
   code and the page are public. A private repository needs a paid plan, and the
   published page is still reachable by anyone with the address.
-- Each run appends that day's readings to `data/history.csv` and commits it. This
-  builds a true point-in-time record, and the regular commits also stop GitHub
-  from pausing the schedule, which it does after 60 days without repository activity.
+- Each run appends that day's readings to `data/history.csv` and saves both pages
+  in the `site` folder, then commits them. This builds a true point-in-time
+  record, and the regular commits also stop GitHub from pausing the schedule,
+  which it does after 60 days without repository activity.
+- GitHub shows an HTML file in the repository as source code. To see a saved page
+  rendered, download it and open it in a browser, or use the published site.
 - If Yahoo Finance cannot supply the three core ETFs, or the newest data is more
   than a week old, the run fails and the previous page stays up. Missing
   secondary data (backfill funds, a country ETF, the T-bill rate) does not stop
@@ -56,8 +68,9 @@ python dashboard.py --out site --synthetic   # made-up data, works offline
 python -m pytest -q tests                    # check the calculations
 ```
 
-Open `site/index.html` in a browser. The synthetic mode stamps a banner on the
-page and never writes to the readings log. Charts load the Plotly library from a
+Open `site/index.html` or `site/report.html` in a browser. The synthetic mode
+stamps a banner on both pages and never writes to the readings log. Use a
+different `--out` folder for test runs so the saved pages in `site` are not overwritten. Charts load the Plotly library from a
 public CDN, so they need an internet connection; the tables do not.
 
 ## Files
@@ -67,8 +80,10 @@ public CDN, so they need an internet connection; the tables do not.
 | `dashboard.py` | Everything: data fetch, calculations, and the page template |
 | `tests/test_metrics.py` | Checks each calculation against a case with a known answer |
 | `.github/workflows/daily.yml` | The daily schedule and publishing steps |
-| `data/history.csv` | Created on the first run; one row per ETF per day |
-| `site/latest.json` | Today's readings in machine-readable form (published beside the page) |
+| `data/history.csv` | One row per ETF per day, appended on each run |
+| `site/index.html` | The latest dashboard page |
+| `site/report.html` | The latest detail report |
+| `site/latest.json` | Today's readings in machine-readable form |
 
 ## Changing things
 
