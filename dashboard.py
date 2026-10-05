@@ -428,6 +428,7 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
 
         # Daily-reset leverage: trailing 1-year simulation and the forward window for the backtest.
         f["ret"] = ret
+        f["dd"] = price / price.cummax() - 1.0         # drawdown from the highest prior close
         f["und_1y"] = compound(ret, TRADING_DAYS)
         f["fwd_1x"] = compound(ret, BACKTEST_HORIZON).shift(-BACKTEST_HORIZON)
         for lev in LEVERAGE:
@@ -554,6 +555,7 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
         wk = f.groupby(f.index.to_period("W-FRI")).tail(1)
         weekly = wk.index
         series[a] = {k: [_num(v) for v in wk[k]] for k in keys}
+        series[a]["dd"] = _weekly_low(f, "dd")
     series["dates"] = [str(d.date()) for d in weekly]
 
     return {
@@ -574,6 +576,11 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
                    "breadth_min": BREADTH_MIN_MEMBERS,
                    "breadth": {a: ASSETS[a]["breadth"] for a in CORE}},
     }
+
+
+def _weekly_low(f: pd.DataFrame, key: str) -> list:
+    """Lowest value in each week, so a trough between weekly samples is not missed."""
+    return [_num(v) for v in f[key].groupby(f.index.to_period("W-FRI")).min()]
 
 
 def _weekly(f: pd.DataFrame, keys: list[str], digits: int = 4) -> tuple[pd.DatetimeIndex, dict]:
@@ -603,7 +610,7 @@ def make_report(res: dict, payload: dict) -> dict:
         shown = f[f.index >= rank_start]
         dates, raw = _weekly(shown, metric_keys + extra)
         _, pcts = _weekly(shown, ["p_" + k for k in metric_keys], digits=1)
-        series[a] = {**raw, **pcts}
+        series[a] = {**raw, **pcts, "dd": _weekly_low(shown, "dd")}
         series["dates"] = [str(d.date()) for d in dates]
 
         lookback = {k: [_num(f[k].iloc[-1 - n]) for n in (21, 63, 252)] for k in metric_keys}
@@ -831,6 +838,7 @@ button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
 code{font-size:.92em;background:var(--band);padding:1px 4px;border-radius:4px}
 footer{margin-top:40px;color:var(--muted);font-size:12.5px}
 .plot.tall{height:360px}
+#ddcharts{display:grid;gap:14px;margin:10px 0 6px}
 .ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0 4px;font-size:13.5px}
 select{font:inherit;font-size:13.5px;padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--ink);max-width:100%}
 .seg{display:flex;gap:4px}
@@ -905,7 +913,7 @@ function plotLines(id, c, get) {
     margin: { l: 46, r: 12, t: 8, b: 26 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", showlegend: false,
     hovermode: "x unified", hoverlabel: { bgcolor: css("--surface"), bordercolor: axis, font: { color: css("--ink"), size: 12 } },
     font: { family: 'system-ui,-apple-system,"Segoe UI",sans-serif', size: 11, color: ink2 },
-    xaxis: { range: [x0, x1], showgrid: false, linecolor: axis, tickcolor: axis, fixedrange: !CAN_ZOOM },
+    xaxis: { range: [x0, x1], hoverformat: "%b %-d, %Y", showgrid: false, linecolor: axis, tickcolor: axis, fixedrange: !CAN_ZOOM },
     yaxis: { range: [lo - pad, hi + pad], gridcolor: grid, zeroline: false, ticksuffix: c.pct ? "%" : "", fixedrange: !CAN_ZOOM },
     dragmode: CAN_ZOOM ? "zoom" : false, shapes,
   }, { displayModeBar: false, responsive: true, doubleClick: "reset" });
@@ -917,6 +925,29 @@ function bindRange(draw) {
     draw();
   }));
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+}
+const rgba = (hex, al) => { const h = hex.replace("#", ""); return "rgba(" + [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)).join(",") + "," + al + ")"; };
+// One ETF: composite score on top, drawdown beneath, on a shared time axis (two panels, not two scales on one).
+function plotScoreDrawdown(id, a) {
+  const [x0, x1] = xRange(), ink2 = css("--ink2"), grid = css("--grid"), axis = css("--axis"), band = css("--band"), col = css(COLOR[a]);
+  const dates = D.series.dates, dd = D.series[a].dd.map((v) => v == null ? null : v * 100);
+  let lo = -1; dates.forEach((d, j) => { if (d >= x0 && d <= x1 && dd[j] != null) lo = Math.min(lo, dd[j]); });
+  const shapes = C.cuts.map((v) => ({ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: v, y1: v, line: { color: axis, width: 1, dash: "dot" }, layer: "below" }));
+  const start = D.assets[a].proxy ? D.assets[a].etf_start : null;
+  if (start && start > x0) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: x0, x1: start, y0: 0, y1: 1, fillcolor: band, line: { width: 0 }, layer: "below" });
+  const yax = { gridcolor: grid, zeroline: false, fixedrange: !CAN_ZOOM, title: { font: { size: 11, color: ink2 }, standoff: 6 } };
+  Plotly.react(id, [
+    { x: dates, y: D.series[a].score, name: "Score", mode: "lines", line: { color: col, width: 1.6 }, yaxis: "y", hovertemplate: "%{y:.0f}<extra>Score</extra>" },
+    { x: dates, y: dd, name: "Drawdown", mode: "lines", line: { color: col, width: 1.2 }, fill: "tozeroy", fillcolor: rgba(col, 0.22), yaxis: "y2", hovertemplate: "%{y:.1f}%<extra>Drawdown</extra>" },
+  ], {
+    margin: { l: 58, r: 12, t: 8, b: 26 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", showlegend: false,
+    hovermode: "x unified", hoversubplots: "axis", hoverlabel: { bgcolor: css("--surface"), bordercolor: axis, font: { color: css("--ink"), size: 12 } },
+    font: { family: 'system-ui,-apple-system,"Segoe UI",sans-serif', size: 11, color: ink2 },
+    xaxis: { range: [x0, x1], anchor: "y2", hoverformat: "%b %-d, %Y", showgrid: false, linecolor: axis, tickcolor: axis, fixedrange: !CAN_ZOOM },
+    yaxis: Object.assign({}, yax, { domain: [0.5, 1], range: [0, 100], title: Object.assign({ text: "Score" }, yax.title) }),
+    yaxis2: Object.assign({}, yax, { domain: [0, 0.43], range: [lo * 1.08, 0], ticksuffix: "%", title: Object.assign({ text: "Drawdown" }, yax.title) }),
+    dragmode: CAN_ZOOM ? "zoom" : false, shapes,
+  }, { displayModeBar: false, responsive: true, doubleClick: "reset" });
 }
 const NO_PLOTLY = '<p class="small">Charts need the Plotly library, which could not be loaded. The tables are unaffected.</p>';
 '''
@@ -995,6 +1026,8 @@ $("doc").innerHTML = `
 
 <h3>Composite score and label</h3>
 <ul>
+<li>The score-against-drawdown charts measure drawdown on total-return prices from the highest prior close in the data (which starts in 1995), and plot the worst close of each week so that a trough between weekly samples is not missed. Before each ETF's first trading day they use the backfilled prices.</li>
+<li>A score that falls as a drawdown deepens is not evidence of early warning. Volatility and 1-month momentum respond to the decline itself, so part of any fall in the score is the drawdown being measured, not predicted. What matters is where the score stood, and which way it was moving, before the decline began.</li>
 <li>Score = ${Math.round(W.momentum * 100)}% momentum (1-month and 12-month percentiles, equally) + ${Math.round(W.volatility * 100)}% volatility (${C.vol[0]}-day and ${C.vol[1]}-day percentiles equally, inverted) + ${Math.round(W.serial_corr * 100)}% serial correlation (variance-ratio percentiles, with the ${C.sc_short}-day and ${C.sc_window}-day windows weighted equally). Every component blends a short and a long window so the score can react to a change without resting on one noisy reading. Where serial correlation cannot be ranked, the other two are re-weighted.</li>
 <li>Five levels: very favorable at ${C.cuts[3]} or above, favorable at ${C.cuts[2]} or above, hostile at ${C.cuts[1]} or below, very hostile at ${C.cuts[0]} or below, and neutral between ${C.cuts[1]} and ${C.cuts[2]}. The cut points are round numbers chosen by judgment, not fitted. A narrow-advance flag moves a favorable or very favorable reading down one level and does nothing else.</li>
 <li>Because the inputs are percentiles of each ETF's own history, the same label on two ETFs does not mean the same absolute risk.</li>
@@ -1044,6 +1077,11 @@ effect is positive when returns trended and negative when they chopped. This is 
 <h2>History</h2>
 <div class="legend" id="legend"></div>
 <p class="small" id="shade-note"></p>
+<h3>Composite score against drawdowns</h3>
+<p class="sub">For each ETF, the composite score (top) above its drawdown from the highest prior close (bottom), on the same time axis.
+Dotted lines mark the label cut points. Use it to judge whether the score fell before a decline began or only as it unfolded.</p>
+<div id="ddcharts"></div>
+<h3>Metrics</h3>
 <div class="charts" id="charts"></div>
 
 <h2>Does the label mean anything? A point-in-time check</h2>
@@ -1146,8 +1184,11 @@ const CHARTS = [
 $("legend").innerHTML = legendHtml();
 $("shade-note").textContent = shadeNote();
 $("charts").innerHTML = CHARTS.map((c, i) => '<div class="chart"><h3>' + c.title + "</h3><p>" + c.note + '</p><div class="plot" id="pl' + i + '"></div></div>').join("");
+$("ddcharts").innerHTML = A.map((a) => '<div class="chart"><h3><i class="sw" style="background:var(' + COLOR[a] + ');margin-right:6px"></i>' + a +
+  ': composite score and drawdown</h3><p>Score, 0 to 100 (top); decline from the highest prior close, worst close each week (bottom)</p><div class="plot tall" id="dd' + a + '"></div></div>').join("");
 function draw() {
-  if (!window.Plotly) { $("charts").innerHTML = NO_PLOTLY; return; }
+  if (!window.Plotly) { $("charts").innerHTML = NO_PLOTLY; $("ddcharts").innerHTML = ""; return; }
+  A.forEach((a) => plotScoreDrawdown("dd" + a, a));
   CHARTS.forEach((c, i) => plotLines("pl" + i, c, (a) => D.series[a][c.key]));
 }
 bindRange(draw);
@@ -1257,6 +1298,7 @@ const OPTS = M.map((m) => ({ key: m.key, label: m.label, pct: m.fmt === "pct", h
     { key: "fav_volatility", label: "Score component: volatility", zero: 50 },
     { key: "fav_serial", label: "Score component: serial correlation", zero: 50 },
     { key: "und_1y", label: "Unlevered return, trailing year", pct: true, zero: 0 },
+    { key: "dd", label: "Drawdown from prior high (worst close each week)", pct: true, zero: 0 },
   ], C.leverage.flatMap((L) => [
     { key: "gap_" + L + "x", label: L + "x compounding effect, trailing year (before costs)", pct: true, zero: 0 },
     { key: "net_" + L + "x", label: L + "x simulated return after costs, trailing year", pct: true, zero: 0 },

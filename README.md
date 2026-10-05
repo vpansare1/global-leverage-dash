@@ -18,7 +18,8 @@ past year, and checks the composite label against what followed historically.
 
 Each run produces two pages:
 
-- **`site/index.html`, the dashboard:** today's readings, the comparison grid, and history charts.
+- **`site/index.html`, the dashboard:** today's readings, the comparison grid, a chart of each
+  ETF's composite score against its drawdown, and history charts for every metric.
 - **`site/report.html`, the detail report:** every reading with its history, a
   chart explorer for any series (raw value or percentile), breadth by individual
   sector and country, the leverage simulation over 3 months to 5 years, the
