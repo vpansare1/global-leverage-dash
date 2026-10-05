@@ -23,8 +23,8 @@ investment advice.
 
 ## Set it up on GitHub
 
-1. Create a repository and add these files, keeping the folder layout
-   (`.github/workflows/daily.yml` must stay at that path).
+1. Create a repository (public, unless you have a paid plan) and add these files,
+   keeping the folder layout (`.github/workflows/daily.yml` must stay at that path).
 2. In the repository, open **Settings > Pages** and set **Source** to
    **GitHub Actions**.
 3. Open the **Actions** tab, choose **Daily leverage dashboard**, and click
@@ -35,7 +35,9 @@ After that it runs by itself at 22:17 UTC on weekdays, after the US close.
 
 Things to know:
 
-- GitHub Pages sites are public on free accounts, even when the repository is private.
+- On a free GitHub account, Pages only works for public repositories, so both the
+  code and the page are public. A private repository needs a paid plan, and the
+  published page is still reachable by anyone with the address.
 - Each run appends that day's readings to `data/history.csv` and commits it. This
   builds a true point-in-time record, and the regular commits also stop GitHub
   from pausing the schedule, which it does after 60 days without repository activity.
