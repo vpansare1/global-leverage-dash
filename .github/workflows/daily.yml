@@ -1,0 +1,58 @@
+name: Daily leverage dashboard
+
+on:
+  schedule:
+    # 22:17 UTC, Monday to Friday: after the US close all year
+    # (6:17pm New York in summer, 5:17pm in winter).
+    - cron: "17 22 * * 1-5"
+  workflow_dispatch:        # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: write           # commit the daily readings log
+  pages: write              # publish the page
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check the calculations
+        run: python -m pytest -q tests
+
+      - name: Build the dashboard
+        run: python dashboard.py --out site --history data/history.csv
+
+      - name: Save today's readings to the log
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/history.csv
+          git diff --cached --quiet || git commit -m "Readings for $(date -u +%F)"
+          git push
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
