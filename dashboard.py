@@ -35,8 +35,9 @@ FETCH_START = "1995-01-01"     # earliest data requested (gives windows time to 
 HISTORY_START = "1998-01-01"   # earliest date used for percentile ranking and charts
 TRADING_DAYS = 252
 
-MOM_SHORT, MOM_LONG = 21, 252  # 1-month and 12-month momentum, in trading days
-VOL_SHORT, VOL_LONG = 21, 60   # realized-volatility windows
+MOM_SHORT, MOM_LONG = 63, 252  # 3-month and 12-month momentum, in trading days (breadth uses the same)
+MONTH = 21                     # trading days in a month, for the 'one month ago' markers
+VOL_SHORT, VOL_LONG = 21, 63   # realized-volatility windows
 SC_WINDOW = 252                # long window for autocorrelation and variance ratios
 VR_HORIZONS = (5, 10, 20)      # variance-ratio horizons over the long window, in days
 SC_SHORT = 63                  # short window for variance ratios
@@ -126,10 +127,10 @@ COMPONENT_NAMES = {
 
 # (key, label, display format, True if a HIGHER reading is better for leverage)
 METRICS = [
-    ("mom_1m", "1-month momentum", "pct", True),
+    ("mom_3m", "3-month momentum", "pct", True),
     ("mom_12m", "12-month momentum", "pct", True),
     ("vol_21", "Volatility, 21-day", "pct", False),
-    ("vol_60", "Volatility, 60-day", "pct", False),
+    ("vol_63", "Volatility, 63-day", "pct", False),
     ("ac1", "Lag-1 autocorrelation, 1-year", "num", True),
     ("vr5_s", "Variance ratio, 5-day (3-month window)", "num", True),
     ("vr10_s", "Variance ratio, 10-day (3-month window)", "num", True),
@@ -137,7 +138,7 @@ METRICS = [
     ("vr10", "Variance ratio, 10-day (1-year window)", "num", True),
     ("vr20", "Variance ratio, 20-day (1-year window)", "num", True),
     ("b12", "Breadth: components up over 12 months", "pct", True),
-    ("b1", "Breadth: components up over 1 month", "pct", True),
+    ("b3", "Breadth: components up over 3 months", "pct", True),
 ]
 SERIAL_KEYS = ("ac1", "vr5_s", "vr10_s", "vr5", "vr10", "vr20")
 
@@ -393,10 +394,10 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
 
         f = pd.DataFrame(index=cal)
         f["price"] = price
-        f["mom_1m"] = momentum(price, MOM_SHORT)
+        f["mom_3m"] = momentum(price, MOM_SHORT)
         f["mom_12m"] = momentum(price, MOM_LONG)
         f["vol_21"] = realized_vol(ret, VOL_SHORT)
-        f["vol_60"] = realized_vol(ret, VOL_LONG)
+        f["vol_63"] = realized_vol(ret, VOL_LONG)
         f["ac1"] = rolling_autocorr(ret, SC_WINDOW)
         for q in VR_HORIZONS:
             f[f"vr{q}"] = variance_ratio(log_ret, q, SC_WINDOW)
@@ -419,9 +420,9 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
         if lost:
             notes.append(f"{a} breadth is missing components: {', '.join(lost)}.")
         b12 = breadth(comps, cfg["breadth"], MOM_LONG)
-        b1 = breadth(comps, cfg["breadth"], MOM_SHORT)
+        b3 = breadth(comps, cfg["breadth"], MOM_SHORT)
         f["b12"], f["b12w"], f["b12n"] = b12["equal"], b12["weighted"], b12["n"]
-        f["b1"], f["b1w"] = b1["equal"], b1["weighted"]
+        f["b3"], f["b3w"] = b3["equal"], b3["weighted"]
         near_high = price >= NEAR_HIGH * price.rolling(MOM_LONG).max()
         narrowing = (f["b12"] < 0.5) | (f["b12"] - f["b12"].shift(63) <= -BREADTH_DROP)
         f["narrow"] = (near_high & narrowing).astype(float).where(f["b12"].notna())
@@ -444,7 +445,7 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
         frames[a], info[a] = f, meta
 
     # One common ranking window so no ETF is judged against an easier history.
-    firsts = [frames[a][["mom_12m", "vol_60"]].dropna().index[0] for a in CORE]
+    firsts = [frames[a][["mom_12m", "vol_63"]].dropna().index[0] for a in CORE]
     rank_start = max(max(firsts), pd.Timestamp(HISTORY_START))
     if rank_start > pd.Timestamp(HISTORY_START) + pd.Timedelta(days=45):
         notes.append(f"Common history starts {rank_start.date()}, later than the "
@@ -455,8 +456,8 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
         for key, _, _, _ in METRICS:
             start = max(rank_start, meta["sc_rank_from"]) if key in SERIAL_KEYS else rank_start
             f["p_" + key] = expanding_percentile(f[key].where(f.index >= start))
-        mom = (f["p_mom_1m"] + f["p_mom_12m"]) / 2.0
-        vol = 100.0 - (f["p_vol_21"] + f["p_vol_60"]) / 2.0
+        mom = (f["p_mom_3m"] + f["p_mom_12m"]) / 2.0
+        vol = 100.0 - (f["p_vol_21"] + f["p_vol_63"]) / 2.0
         sc = (f[[f"p_vr{q}_s" for q in VR_SHORT_HORIZONS]].mean(axis=1, skipna=False)
               + f[[f"p_vr{q}" for q in VR_HORIZONS]].mean(axis=1, skipna=False)) / 2.0
         parts = pd.DataFrame({"momentum": mom, "volatility": vol, "serial_corr": sc})
@@ -504,7 +505,7 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
             cells[key] = {
                 "value": _num(last[key]), "pct": pct,
                 "fav": None if pct is None else _num(pct if higher_better else 100 - pct, 1),
-                "prev": _num(f[key].iloc[-1 - MOM_SHORT]),
+                "prev": _num(f[key].iloc[-1 - MONTH]),
                 "q": [_num(hist.quantile(p)) for p in (0.01, 0.25, 0.5, 0.75, 0.99)] if len(hist) else None,
                 "n": int(len(hist)), "since": str(hist.index[0].date()) if len(hist) else None,
             }
@@ -538,7 +539,7 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
             "score": _num(last["score"], 1), "label": last["label"] if isinstance(last["label"], str) else None,
             "fav": {k: _num(last["fav_" + k], 1) for k in ("momentum", "volatility", "serial")},
             "rank_12m": order12.index(a) + 1, "narrow": bool(last["narrow"] == 1),
-            "b12w": _num(last["b12w"]), "b1w": _num(last["b1w"]),
+            "b12w": _num(last["b12w"]), "b3w": _num(last["b3w"]),
             "b_members": int(last["b12n"]) if pd.notna(last["b12n"]) else 0,
             "b_total": len(cfg["breadth"]), "und_1y": _num(last["und_1y"]),
             "cells": cells, "lev": lev, "backtest": backtest,
@@ -546,7 +547,7 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
         }
 
     # Weekly samples (last trading day of each week) keep the page small.
-    keys = ["mom_12m", "mom_1m", "vol_60", "vol_21", "ac1", "vr10", "vr10_s", "b12",
+    keys = ["mom_12m", "mom_3m", "vol_63", "vol_21", "ac1", "vr10", "vr10_s", "b12",
             f"gap_{LEVERAGE[-1]}x", "score"]
     weekly = None
     series = {}
@@ -602,7 +603,7 @@ def make_report(res: dict, payload: dict) -> dict:
     frames, info, px, asof = res["frames"], res["info"], res["px"], res["asof"]
     rank_start, top = res["rank_start"], LEVERAGE[-1]
     metric_keys = [m[0] for m in METRICS]
-    extra = ["b12w", "b1w", "und_1y", "score", "fav_momentum", "fav_volatility", "fav_serial"] \
+    extra = ["b12w", "b3w", "und_1y", "score", "fav_momentum", "fav_volatility", "fav_serial"] \
         + [f"{k}_{L}x" for L in LEVERAGE for k in ("gap", "net")]
     series, assets = {}, {}
     for a in CORE:
@@ -620,7 +621,7 @@ def make_report(res: dict, payload: dict) -> dict:
             row = {"ticker": t, "name": COMPONENT_NAMES.get(t, ""), "weight": w}
             if t in px.columns:
                 c = px[t].ffill(limit=5)
-                row.update(m1=_num(momentum(c, MOM_SHORT).iloc[-1]), m12=_num(momentum(c, MOM_LONG).iloc[-1]),
+                row.update(m3=_num(momentum(c, MOM_SHORT).iloc[-1]), m12=_num(momentum(c, MOM_LONG).iloc[-1]),
                            since=str(px[t].first_valid_index().date()))
             comps.append(row)
 
@@ -980,7 +981,7 @@ $("doc").innerHTML = `
 <li>EEM began trading on ${eem.etf_start}. ${eem.proxy ? "Earlier returns come from Vanguard's emerging markets index fund (" + esc(eem.proxy) + "), which at the time tracked a select MSCI emerging markets index. That index left out some countries, so it is close to, but not the same as, the index EEM follows." : "No backfill was available in this run."}</li>
 <li>The backfill funds carry their own expenses and are mutual funds priced once a day. Their history is used only before each ETF's first trading day.</li>
 <li><strong>Stale pricing.</strong> In that era the funds were priced from foreign closing prices set hours before the US close, so US-session news reached them a day late. This manufactures positive day-to-day correlation and understates daily volatility.${stale(efa)}${stale(eem)}</li>
-<li>Consequences: momentum over 1 and 12 months is essentially unaffected. Volatility in the shaded era is understated, which makes later volatility percentiles read slightly high. Serial-correlation readings that touch the backfilled era are plotted for reference but excluded from percentile ranking (EFA ranks from ${efa.sc_rank_from}, EEM from ${eem.sc_rank_from}).</li>
+<li>Consequences: momentum over 3 and 12 months is essentially unaffected. Volatility in the shaded era is understated, which makes later volatility percentiles read slightly high. Serial-correlation readings that touch the backfilled era are plotted for reference but excluded from percentile ranking (EFA ranks from ${efa.sc_rank_from}, EEM from ${eem.sc_rank_from}).</li>
 </ul>
 
 <h3>Percentiles</h3>
@@ -995,7 +996,7 @@ $("doc").innerHTML = `
 <h3>Momentum</h3>
 <ul>
 <li>Total return over ${C.mom[0]} and ${C.mom[1]} trading days. There is no trend filter or on/off gate; raw values and percentiles are shown as they are.</li>
-<li>For scoring, higher momentum counts as more favorable at both horizons. The two horizons are blended equally: the 12-month reading is the steadier one, and the 1-month reading reacts sooner but is noisy and sometimes partially reverses.</li>
+<li>For scoring, higher momentum counts as more favorable at both horizons. The two horizons are blended equally: the 12-month reading is the steadier one, and the 3-month reading reacts sooner to a change in trend.</li>
 <li>The 1-2-3 rank compares 12-month returns across the three ETFs.</li>
 </ul>
 
@@ -1016,7 +1017,7 @@ $("doc").innerHTML = `
 
 <h3>Breadth</h3>
 <ul>
-<li>Breadth is the share of an index's building blocks with a positive return over the same 1- and 12-month windows used for momentum. It is a quality check on momentum, not a fourth independent signal: the two usually agree, and the useful case is a rising index with few participants.</li>
+<li>Breadth is the share of an index's building blocks with a positive return over the same 3- and 12-month windows used for momentum. It is a quality check on momentum, not a fourth independent signal: the two usually agree, and the useful case is a rising index with few participants.</li>
 <li>The building blocks are coarse proxies, not the underlying stocks. SPY uses sector ETFs; EFA and EEM use single-country ETFs. With only ${C.breadth_min} to 20 members the reading moves in visible steps and its percentile is lumpy. SPY uses sectors because rebuilding stock-level breadth from today's index members would bias the history upward (failed companies would be missing).</li>
 <li>Membership changes over time as funds launched, so early breadth rests on fewer members (at least ${C.breadth_min} are required). Emerging-market country ETFs mostly launched in 2000 or later, so EEM breadth history is the shortest.</li>
 <li>Country lists follow MSCI's classification: South Korea is in the EEM set and Canada is in neither. The country ETFs track capped or variant indexes (China is represented by FXI, a large-cap fund chosen for its longer history), so they are not exact slices of EFA or EEM.</li>
@@ -1027,8 +1028,8 @@ $("doc").innerHTML = `
 <h3>Composite score and label</h3>
 <ul>
 <li>The score-against-drawdown charts measure drawdown on total-return prices from the highest prior close in the data (which starts in 1995), and plot the worst close of each week so that a trough between weekly samples is not missed. Before each ETF's first trading day they use the backfilled prices.</li>
-<li>A score that falls as a drawdown deepens is not evidence of early warning. Volatility and 1-month momentum respond to the decline itself, so part of any fall in the score is the drawdown being measured, not predicted. What matters is where the score stood, and which way it was moving, before the decline began.</li>
-<li>Score = ${Math.round(W.momentum * 100)}% momentum (1-month and 12-month percentiles, equally) + ${Math.round(W.volatility * 100)}% volatility (${C.vol[0]}-day and ${C.vol[1]}-day percentiles equally, inverted) + ${Math.round(W.serial_corr * 100)}% serial correlation (variance-ratio percentiles, with the ${C.sc_short}-day and ${C.sc_window}-day windows weighted equally). Every component blends a short and a long window so the score can react to a change without resting on one noisy reading. Where serial correlation cannot be ranked, the other two are re-weighted.</li>
+<li>A score that falls as a drawdown deepens is not evidence of early warning. Volatility and 3-month momentum respond to the decline itself, so part of any fall in the score is the drawdown being measured, not predicted. What matters is where the score stood, and which way it was moving, before the decline began.</li>
+<li>Score = ${Math.round(W.momentum * 100)}% momentum (3-month and 12-month percentiles, equally) + ${Math.round(W.volatility * 100)}% volatility (${C.vol[0]}-day and ${C.vol[1]}-day percentiles equally, inverted) + ${Math.round(W.serial_corr * 100)}% serial correlation (variance-ratio percentiles, with the ${C.sc_short}-day and ${C.sc_window}-day windows weighted equally). Every component blends a short and a long window so the score can react to a change without resting on one noisy reading. Where serial correlation cannot be ranked, the other two are re-weighted.</li>
 <li>Five levels: very favorable at ${C.cuts[3]} or above, favorable at ${C.cuts[2]} or above, hostile at ${C.cuts[1]} or below, very hostile at ${C.cuts[0]} or below, and neutral between ${C.cuts[1]} and ${C.cuts[2]}. The cut points are round numbers chosen by judgment, not fitted. A narrow-advance flag moves a favorable or very favorable reading down one level and does nothing else.</li>
 <li>Because the inputs are percentiles of each ETF's own history, the same label on two ETFs does not mean the same absolute risk.</li>
 </ul>
@@ -1105,12 +1106,12 @@ $("cards").innerHTML = A.map((a) => {
     (d.narrow ? '<span class="flag">⚠ Narrow advance: near its high on weak or falling breadth</span>' : "") +
     "<dl>" +
     '<dt class="h">Momentum</dt>' +
-    row("1 month", spct(c.mom_1m.value) + " · " + pctText("mom_1m", c.mom_1m.pct)) +
+    row("3 months", spct(c.mom_3m.value) + " · " + pctText("mom_3m", c.mom_3m.pct)) +
     row("12 months", spct(c.mom_12m.value) + " · " + pctText("mom_12m", c.mom_12m.pct)) +
     row("12-month rank among the three", d.rank_12m + " of " + A.length) +
     '<dt class="h">Volatility (annualized)</dt>' +
     row(C.vol[0] + "-day", pct(c.vol_21.value) + " · " + pctText("vol_21", c.vol_21.pct)) +
-    row(C.vol[1] + "-day", pct(c.vol_60.value) + " · " + pctText("vol_60", c.vol_60.pct)) +
+    row(C.vol[1] + "-day", pct(c.vol_63.value) + " · " + pctText("vol_63", c.vol_63.pct)) +
     row("Implied yearly drag at 2x / 3x", pct(L["2"].drag) + " / " + pct(L["3"].drag)) +
     '<dt class="h">Serial correlation</dt>' +
     row("Lag-1 autocorrelation, 1-year", num(c.ac1.value) + " (noise band ±" + band.toFixed(2) + ")") +
@@ -1118,7 +1119,7 @@ $("cards").innerHTML = A.map((a) => {
     row("Variance ratio 5 / 10 / 20 day, 1-year window", num(c.vr5.value) + " / " + num(c.vr10.value) + " / " + num(c.vr20.value)) +
     '<dt class="h">Breadth (' + d.b_members + " of " + d.b_total + " " + d.breadth_kind + ")</dt>" +
     row("Up over 12 months, equal / index weight", pct(c.b12.value, 0) + " / " + pct(d.b12w, 0)) +
-    row("Up over 1 month, equal / index weight", pct(c.b1.value, 0) + " / " + pct(d.b1w, 0)) +
+    row("Up over 3 months, equal / index weight", pct(c.b3.value, 0) + " / " + pct(d.b3w, 0)) +
     "</dl></article>";
 }).join("");
 
@@ -1135,7 +1136,7 @@ function rangeBar(m, c) {
     (c.prev == null ? "" : '<ellipse cx="' + x(c.prev) + '" cy="8" rx="2.6" ry="4" fill="var(--surface)" stroke="var(--ink2)" stroke-width="1.2" vector-effect="non-scaling-stroke"/>') +
     '<ellipse cx="' + x(c.value) + '" cy="8" rx="2.9" ry="4.6" fill="var(--ink)" stroke="var(--surface)" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>';
 }
-const GROUPS = { mom_1m: "Momentum", vol_21: "Volatility", ac1: "Serial correlation", b12: "Breadth" };
+const GROUPS = { mom_3m: "Momentum", vol_21: "Volatility", ac1: "Serial correlation", b12: "Breadth" };
 $("grid").innerHTML = "<thead><tr><th>Metric</th>" + A.map((a) => "<th>" + a + "</th>").join("") + "</tr></thead><tbody>" +
   D.metrics.map((m) => (GROUPS[m.key] ? '<tr><td class="grp" colspan="' + (A.length + 1) + '">' + GROUPS[m.key] + "</td></tr>" : "") +
     "<tr><td>" + m.label + '<div class="small">' + (m.higher_better ? "higher is better for leverage" : "lower is better for leverage") + "</div></td>" +
@@ -1171,9 +1172,9 @@ $("bt").innerHTML = '<thead><tr><th>ETF</th><th>Label</th><th class="n">Share of
 
 const CHARTS = [
   { key: "mom_12m", title: "12-month momentum", note: "Total return over 252 trading days", pct: true, zero: 0 },
-  { key: "mom_1m", title: "1-month momentum", note: "Total return over 21 trading days", pct: true, zero: 0 },
+  { key: "mom_3m", title: "3-month momentum", note: "Total return over 63 trading days", pct: true, zero: 0 },
   { key: "vol_21", title: "Volatility, 21-day", note: "Annualized standard deviation of daily returns", pct: true },
-  { key: "vol_60", title: "Volatility, 60-day", note: "Annualized standard deviation of daily returns", pct: true },
+  { key: "vol_63", title: "Volatility, 63-day", note: "Annualized standard deviation of daily returns", pct: true },
   { key: "vr10_s", title: "Variance ratio, 10-day, 3-month window", note: "Above 1 = trending, below 1 = choppy; reacts sooner, noisier", zero: 1 },
   { key: "vr10", title: "Variance ratio, 10-day, 1-year window", note: "Above 1 = trending, below 1 = choppy; steadier", zero: 1 },
   { key: "ac1", title: "Lag-1 autocorrelation", note: "1-year window; readings inside the noise band are indistinguishable from zero", zero: 0, band: 2 / Math.sqrt(C.sc_window) },
@@ -1292,7 +1293,7 @@ const OPTS = M.map((m) => ({ key: m.key, label: m.label, pct: m.fmt === "pct", h
   zero: m.key.startsWith("mom") ? 0 : m.key.startsWith("vr") ? 1 : m.key === "ac1" ? 0 : null, band: m.key === "ac1" ? 2 / Math.sqrt(C.sc_window) : null }))
   .concat([
     { key: "b12w", label: "Breadth: up over 12 months, index weight", pct: true },
-    { key: "b1w", label: "Breadth: up over 1 month, index weight", pct: true },
+    { key: "b3w", label: "Breadth: up over 3 months, index weight", pct: true },
     { key: "score", label: "Composite score", lines: C.cuts },
     { key: "fav_momentum", label: "Score component: momentum", zero: 50 },
     { key: "fav_volatility", label: "Score component: volatility", zero: 50 },
@@ -1322,9 +1323,9 @@ draw();
 
 $("comps").innerHTML = A.map((a) => { const d = D.assets[a], cs = R.assets[a].components;
   return etfHead(a) + '<p class="small">' + cs.filter((c) => c.m12 > 0).length + " of " + cs.filter((c) => c.m12 != null).length + " up over 12 months; " +
-    cs.filter((c) => c.m1 > 0).length + " of " + cs.filter((c) => c.m1 != null).length + " up over 1 month.</p>" +
-    tbl(null, [["Component"], ["Ticker"], ["Approx. weight", 1], ["1-month return", 1], ["12-month return", 1], ["Data since"]],
-      cs.map((c) => [esc(c.name), c.ticker, c.weight + "%", c.since ? spct(c.m1) : "no data", c.since ? spct(c.m12) : "no data", c.since || "n/a"]), true); }).join("");
+    cs.filter((c) => c.m3 > 0).length + " of " + cs.filter((c) => c.m3 != null).length + " up over 3 months.</p>" +
+    tbl(null, [["Component"], ["Ticker"], ["Approx. weight", 1], ["3-month return", 1], ["12-month return", 1], ["Data since"]],
+      cs.map((c) => [esc(c.name), c.ticker, c.weight + "%", c.since ? spct(c.m3) : "no data", c.since ? spct(c.m12) : "no data", c.since || "n/a"]), true); }).join("");
 
 tbl("levh", [["ETF"], ["Lookback"], ["Unlevered", 1]].concat(C.leverage.flatMap((L) => [[L + "x simple multiple", 1], [L + "x simulated, before costs", 1], [L + "x simulated, after costs", 1]])),
   A.flatMap((a) => R.assets[a].lev.map((r, i) => [first(a, i), r.label, spct(r.und)].concat(

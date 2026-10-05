@@ -8,10 +8,10 @@ against that ETF's own history since 1998:
 
 | Metric | What is measured |
 |---|---|
-| Momentum | 1-month and 12-month total return (dividend- and split-adjusted) |
-| Volatility | 21- and 60-day realized volatility, plus the yearly drag implied at 2x and 3x |
+| Momentum | 3-month and 12-month total return (dividend- and split-adjusted) |
+| Volatility | 21- and 63-day realized volatility, plus the yearly drag implied at 2x and 3x |
 | Serial correlation | Variance ratios over 3-month and 1-year windows, and 1-year lag-1 autocorrelation |
-| Breadth | Share of sector ETFs (SPY) or country ETFs (EFA, EEM) with a positive 1- and 12-month return |
+| Breadth | Share of sector ETFs (SPY) or country ETFs (EFA, EEM) with a positive 3- and 12-month return |
 
 It also simulates how a daily-reset 2x and 3x fund actually compounded over the
 past year, and checks the composite label against what followed historically.
@@ -104,7 +104,7 @@ Two settings deserve attention before you rely on them:
 ## Design choices worth knowing about
 
 - **No momentum gate.** Momentum is reported as raw values and percentiles only.
-- **Breadth uses the same 1- and 12-month windows as momentum**, with no moving-average rule.
+- **Breadth uses the same 3- and 12-month windows as momentum**, with no moving-average rule.
 - **SPY breadth uses the eleven sector ETFs, not individual stocks.** Rebuilding
   stock-level breadth from today's index members would leave out companies that
   failed or were removed, which biases the historical percentile.
