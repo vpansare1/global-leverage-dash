@@ -1,6 +1,6 @@
 {
  "asof": "2026-10-02",
- "generated": "2026-10-05 19:13 UTC",
+ "generated": "2026-10-05 19:19 UTC",
  "synthetic": false,
  "rank_start": "1998-01-01",
  "cash_now": 0.0399,
@@ -20,12 +20,12 @@
    "stale_ac_backfill": null,
    "stale_ac_etf": null,
    "sc_rank_from": "1998-01-01",
-   "score": 62.1,
+   "score": 62.4,
    "label": "neutral",
    "fav": {
-    "momentum": 56.0,
-    "volatility": 69.3,
-    "serial": 60.2
+    "momentum": 51.7,
+    "volatility": 72.5,
+    "serial": 63.2
    },
    "rank_12m": 2,
    "narrow": true,
@@ -106,6 +106,36 @@
       -0.0462,
       -0.0023,
       0.0797
+     ],
+     "n": 7232,
+     "since": "1998-01-02"
+    },
+    "vr5_s": {
+     "value": 0.9092,
+     "pct": 66.5,
+     "fav": 66.5,
+     "prev": 0.8856,
+     "q": [
+      0.4454,
+      0.701,
+      0.821,
+      0.9679,
+      1.3869
+     ],
+     "n": 7232,
+     "since": "1998-01-02"
+    },
+    "vr10_s": {
+     "value": 0.7675,
+     "pct": 66.1,
+     "fav": 66.1,
+     "prev": 0.5728,
+     "q": [
+      0.2801,
+      0.517,
+      0.6574,
+      0.8386,
+      1.4906
      ],
      "n": 7232,
      "since": "1998-01-02"
@@ -205,42 +235,42 @@
    "backtest": [
     {
      "label": "favorable",
-     "days": 2981,
-     "share": 0.447,
-     "windows": 47,
-     "fwd_1x": 0.0338,
-     "net_2x": 0.0571,
+     "days": 2805,
+     "share": 0.421,
+     "windows": 44,
+     "fwd_1x": 0.0332,
+     "net_2x": 0.0555,
      "gap_2x": -0.0021,
-     "net_3x": 0.0804,
+     "net_3x": 0.0772,
      "gap_3x": -0.0063,
      "win": 0.683,
-     "p5": -0.2934
+     "p5": -0.3008
     },
     {
      "label": "neutral",
-     "days": 2026,
-     "share": 0.304,
-     "windows": 32,
-     "fwd_1x": 0.0383,
-     "net_2x": 0.0614,
-     "gap_2x": -0.0015,
-     "net_3x": 0.0821,
+     "days": 2321,
+     "share": 0.348,
+     "windows": 36,
+     "fwd_1x": 0.0397,
+     "net_2x": 0.0666,
+     "gap_2x": -0.0016,
+     "net_3x": 0.0922,
      "gap_3x": -0.0048,
      "win": 0.645,
-     "p5": -0.3316
+     "p5": -0.3241
     },
     {
      "label": "hostile",
-     "days": 1659,
-     "share": 0.249,
-     "windows": 26,
-     "fwd_1x": 0.0365,
-     "net_2x": 0.0495,
-     "gap_2x": -0.0058,
-     "net_3x": 0.0507,
-     "gap_3x": -0.0171,
-     "win": 0.565,
-     "p5": -0.4785
+     "days": 1540,
+     "share": 0.231,
+     "windows": 24,
+     "fwd_1x": 0.0362,
+     "net_2x": 0.0488,
+     "gap_2x": -0.0059,
+     "net_3x": 0.049,
+     "gap_3x": -0.0174,
+     "win": 0.562,
+     "p5": -0.4937
     }
    ],
    "backtest_from": "1999-12-31"
@@ -256,12 +286,12 @@
    "stale_ac_backfill": 0.075,
    "stale_ac_etf": -0.101,
    "sc_rank_from": "2002-10-01",
-   "score": 46.5,
+   "score": 44.9,
    "label": "neutral",
    "fav": {
-    "momentum": 49.1,
-    "volatility": 57.5,
-    "serial": 19.0
+    "momentum": 39.5,
+    "volatility": 63.7,
+    "serial": 17.8
    },
    "rank_12m": 3,
    "narrow": false,
@@ -342,6 +372,36 @@
       -0.0565,
       -0.0089,
       0.096
+     ],
+     "n": 6040,
+     "since": "2002-10-01"
+    },
+    "vr5_s": {
+     "value": 0.566,
+     "pct": 6.1,
+     "fav": 6.1,
+     "prev": 0.5718,
+     "q": [
+      0.4356,
+      0.7252,
+      0.8622,
+      0.9938,
+      1.387
+     ],
+     "n": 6040,
+     "since": "2002-10-01"
+    },
+    "vr10_s": {
+     "value": 0.5546,
+     "pct": 27.2,
+     "fav": 27.2,
+     "prev": 0.3565,
+     "q": [
+      0.2799,
+      0.5447,
+      0.718,
+      0.9265,
+      1.3573
      ],
      "n": 6040,
      "since": "2002-10-01"
@@ -441,42 +501,42 @@
    "backtest": [
     {
      "label": "favorable",
-     "days": 2721,
-     "share": 0.435,
-     "windows": 43,
-     "fwd_1x": 0.0269,
-     "net_2x": 0.0418,
-     "gap_2x": -0.0022,
-     "net_3x": 0.0534,
-     "gap_3x": -0.0067,
-     "win": 0.621,
-     "p5": -0.2708
+     "days": 2500,
+     "share": 0.4,
+     "windows": 39,
+     "fwd_1x": 0.031,
+     "net_2x": 0.0491,
+     "gap_2x": -0.002,
+     "net_3x": 0.0662,
+     "gap_3x": -0.006,
+     "win": 0.648,
+     "p5": -0.252
     },
     {
      "label": "neutral",
-     "days": 1821,
-     "share": 0.291,
-     "windows": 28,
-     "fwd_1x": 0.034,
-     "net_2x": 0.054,
-     "gap_2x": -0.003,
-     "net_3x": 0.068,
-     "gap_3x": -0.0091,
-     "win": 0.632,
-     "p5": -0.377
+     "days": 2175,
+     "share": 0.348,
+     "windows": 34,
+     "fwd_1x": 0.027,
+     "net_2x": 0.0391,
+     "gap_2x": -0.0031,
+     "net_3x": 0.0456,
+     "gap_3x": -0.0093,
+     "win": 0.591,
+     "p5": -0.3831
     },
     {
      "label": "hostile",
-     "days": 1706,
-     "share": 0.273,
-     "windows": 27,
-     "fwd_1x": 0.0347,
-     "net_2x": 0.0485,
-     "gap_2x": -0.004,
-     "net_3x": 0.0511,
+     "days": 1573,
+     "share": 0.252,
+     "windows": 24,
+     "fwd_1x": 0.0359,
+     "net_2x": 0.0514,
+     "gap_2x": -0.0041,
+     "net_3x": 0.0554,
      "gap_3x": -0.0125,
-     "win": 0.555,
-     "p5": -0.5221
+     "win": 0.561,
+     "p5": -0.5328
     }
    ],
    "backtest_from": "2001-08-28"
@@ -492,12 +552,12 @@
    "stale_ac_backfill": 0.196,
    "stale_ac_etf": -0.112,
    "sc_rank_from": "2004-05-12",
-   "score": 44.3,
+   "score": 40.3,
    "label": "neutral",
    "fav": {
-    "momentum": 71.0,
-    "volatility": 33.7,
-    "serial": 11.8
+    "momentum": 63.3,
+    "volatility": 32.2,
+    "serial": 10.7
    },
    "rank_12m": 1,
    "narrow": false,
@@ -577,7 +637,37 @@
       -0.126,
       -0.0464,
       -0.0041,
-      0.1257
+      0.1258
+     ],
+     "n": 5634,
+     "since": "2004-05-12"
+    },
+    "vr5_s": {
+     "value": 0.6314,
+     "pct": 10.5,
+     "fav": 10.5,
+     "prev": 0.6071,
+     "q": [
+      0.437,
+      0.729,
+      0.8377,
+      0.9777,
+      1.3206
+     ],
+     "n": 5634,
+     "since": "2004-05-12"
+    },
+    "vr10_s": {
+     "value": 0.4019,
+     "pct": 8.6,
+     "fav": 8.6,
+     "prev": 0.3208,
+     "q": [
+      0.2692,
+      0.5378,
+      0.7006,
+      0.8829,
+      1.4877
      ],
      "n": 5634,
      "since": "2004-05-12"
@@ -677,42 +767,42 @@
    "backtest": [
     {
      "label": "favorable",
-     "days": 2002,
-     "share": 0.343,
+     "days": 1978,
+     "share": 0.339,
      "windows": 31,
-     "fwd_1x": 0.0404,
-     "net_2x": 0.0601,
+     "fwd_1x": 0.0409,
+     "net_2x": 0.0615,
      "gap_2x": -0.0027,
-     "net_3x": 0.0752,
+     "net_3x": 0.0772,
      "gap_3x": -0.0081,
-     "win": 0.609,
-     "p5": -0.3692
+     "win": 0.61,
+     "p5": -0.3569
     },
     {
      "label": "neutral",
-     "days": 2344,
-     "share": 0.401,
-     "windows": 37,
-     "fwd_1x": 0.0186,
-     "net_2x": 0.0171,
-     "gap_2x": -0.0056,
-     "net_3x": 0.0065,
-     "gap_3x": -0.0168,
-     "win": 0.512,
-     "p5": -0.4083
+     "days": 2478,
+     "share": 0.424,
+     "windows": 39,
+     "fwd_1x": 0.0195,
+     "net_2x": 0.019,
+     "gap_2x": -0.0058,
+     "net_3x": 0.0105,
+     "gap_3x": -0.0173,
+     "win": 0.519,
+     "p5": -0.4086
     },
     {
      "label": "hostile",
-     "days": 1496,
-     "share": 0.256,
-     "windows": 23,
-     "fwd_1x": 0.0705,
-     "net_2x": 0.1119,
-     "gap_2x": -0.0061,
-     "net_3x": 0.1414,
-     "gap_3x": -0.0183,
-     "win": 0.626,
-     "p5": -0.6578
+     "days": 1386,
+     "share": 0.237,
+     "windows": 22,
+     "fwd_1x": 0.0774,
+     "net_2x": 0.1287,
+     "gap_2x": -0.0049,
+     "net_3x": 0.1634,
+     "gap_3x": -0.0156,
+     "win": 0.623,
+     "p5": -0.6831
     }
    ],
    "backtest_from": "2003-04-15"
@@ -755,20 +845,32 @@
    "higher_better": true
   },
   {
+   "key": "vr5_s",
+   "label": "Variance ratio, 5-day (3-month window)",
+   "fmt": "num",
+   "higher_better": true
+  },
+  {
+   "key": "vr10_s",
+   "label": "Variance ratio, 10-day (3-month window)",
+   "fmt": "num",
+   "higher_better": true
+  },
+  {
    "key": "vr5",
-   "label": "Variance ratio, 5-day",
+   "label": "Variance ratio, 5-day (1-year window)",
    "fmt": "num",
    "higher_better": true
   },
   {
    "key": "vr10",
-   "label": "Variance ratio, 10-day",
+   "label": "Variance ratio, 10-day (1-year window)",
    "fmt": "num",
    "higher_better": true
   },
   {
    "key": "vr20",
-   "label": "Variance ratio, 20-day",
+   "label": "Variance ratio, 20-day (1-year window)",
    "fmt": "num",
    "higher_better": true
   },
@@ -799,6 +901,11 @@
    5,
    10,
    20
+  ],
+  "sc_short": 63,
+  "vr_short": [
+   5,
+   10
   ],
   "min_rank": 504,
   "leverage": [
