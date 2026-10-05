@@ -52,8 +52,6 @@ FALLBACK_CASH_RATE = 0.04      # used only if the T-bill series cannot be fetche
 CASH_TICKER = "^IRX"           # 13-week T-bill yield, in percent
 
 BREADTH_MIN_MEMBERS = 5        # components needed before breadth is reported
-NEAR_HIGH = 0.97               # "near its high" = within 3% of the 252-day high
-BREADTH_DROP = 0.10            # breadth fall over 63 days that counts as narrowing
 
 # Composite score (a heuristic, see the page's methodology section).
 SCORE_WEIGHTS = {"momentum": 0.40, "volatility": 0.40, "serial_corr": 0.20}
@@ -423,9 +421,6 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
         b3 = breadth(comps, cfg["breadth"], MOM_SHORT)
         f["b12"], f["b12w"], f["b12n"] = b12["equal"], b12["weighted"], b12["n"]
         f["b3"], f["b3w"] = b3["equal"], b3["weighted"]
-        near_high = price >= NEAR_HIGH * price.rolling(MOM_LONG).max()
-        narrowing = (f["b12"] < 0.5) | (f["b12"] - f["b12"].shift(63) <= -BREADTH_DROP)
-        f["narrow"] = (near_high & narrowing).astype(float).where(f["b12"].notna())
 
         # Daily-reset leverage: trailing 1-year simulation and the forward window for the backtest.
         f["ret"] = ret
@@ -470,9 +465,6 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
         label[f["score"] >= SCORE_CUTS[3]] = "very_favorable"
         label[f["score"] <= SCORE_CUTS[1]] = "hostile"
         label[f["score"] <= SCORE_CUTS[0]] = "very_hostile"
-        narrow = f["narrow"] == 1                      # a narrow advance costs one level
-        label[narrow & (label == "favorable")] = "neutral"
-        label[narrow & (label == "very_favorable")] = "favorable"
         f["label"] = label.where(f["score"].notna())
 
     return {"frames": frames, "info": info, "asof": asof, "rank_start": rank_start,
@@ -538,7 +530,7 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
             "sc_rank_from": str(max(rank_start, meta["sc_rank_from"]).date()),
             "score": _num(last["score"], 1), "label": last["label"] if isinstance(last["label"], str) else None,
             "fav": {k: _num(last["fav_" + k], 1) for k in ("momentum", "volatility", "serial")},
-            "rank_12m": order12.index(a) + 1, "narrow": bool(last["narrow"] == 1),
+            "rank_12m": order12.index(a) + 1,
             "b12w": _num(last["b12w"]), "b3w": _num(last["b3w"]),
             "b_members": int(last["b12n"]) if pd.notna(last["b12n"]) else 0,
             "b_total": len(cfg["breadth"]), "und_1y": _num(last["und_1y"]),
@@ -573,7 +565,7 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
                    "leverage": list(LEVERAGE), "spread": FINANCING_SPREAD, "fee": EXPENSE_RATIO,
                    "weights": SCORE_WEIGHTS, "cuts": list(SCORE_CUTS),
                    "levels": [{"key": k, "name": n} for k, n in LEVELS],
-                   "horizon": BACKTEST_HORIZON, "near_high": NEAR_HIGH, "breadth_drop": BREADTH_DROP,
+                   "horizon": BACKTEST_HORIZON,
                    "breadth_min": BREADTH_MIN_MEMBERS,
                    "breadth": {a: ASSETS[a]["breadth"] for a in CORE}},
     }
@@ -1017,12 +1009,11 @@ $("doc").innerHTML = `
 
 <h3>Breadth</h3>
 <ul>
-<li>Breadth is the share of an index's building blocks with a positive return over the same 3- and 12-month windows used for momentum. It is a quality check on momentum, not a fourth independent signal: the two usually agree, and the useful case is a rising index with few participants.</li>
+<li>Breadth is the share of an index's building blocks with a positive return over the same 3- and 12-month windows used for momentum. It is shown for information only and does not enter the score or the label. It usually agrees with momentum; the case worth noticing is a rising index with few participants.</li>
 <li>The building blocks are coarse proxies, not the underlying stocks. SPY uses sector ETFs; EFA and EEM use single-country ETFs. With only ${C.breadth_min} to 20 members the reading moves in visible steps and its percentile is lumpy. SPY uses sectors because rebuilding stock-level breadth from today's index members would bias the history upward (failed companies would be missing).</li>
 <li>Membership changes over time as funds launched, so early breadth rests on fewer members (at least ${C.breadth_min} are required). Emerging-market country ETFs mostly launched in 2000 or later, so EEM breadth history is the shortest.</li>
 <li>Country lists follow MSCI's classification: South Korea is in the EEM set and Canada is in neither. The country ETFs track capped or variant indexes (China is represented by FXI, a large-cap fund chosen for its longer history), so they are not exact slices of EFA or EEM.</li>
 <li>The index-weighted figure uses approximate, fixed weights that were set by hand and are applied to all of history. Treat it as a rough cross-check on concentration, and update the weights in the script from fund fact sheets if you rely on it. Current sets: SPY: ${members("SPY")}. EFA: ${members("EFA")}. EEM: ${members("EEM")}.</li>
-<li>The narrow-advance flag appears when the ETF is within ${Math.round((1 - C.near_high) * 100)}% of its one-year high while fewer than half the components are up over 12 months, or that share has dropped ${Math.round(C.breadth_drop * 100)} points or more in three months. It is a warning light only: capitalization-weighted indexes can rise on narrow breadth for a long time.</li>
 </ul>
 
 <h3>Composite score and label</h3>
@@ -1030,7 +1021,7 @@ $("doc").innerHTML = `
 <li>The score-against-drawdown charts measure drawdown on total-return prices from the highest prior close in the data (which starts in 1995), and plot the worst close of each week so that a trough between weekly samples is not missed. Before each ETF's first trading day they use the backfilled prices.</li>
 <li>A score that falls as a drawdown deepens is not evidence of early warning. Volatility and 3-month momentum respond to the decline itself, so part of any fall in the score is the drawdown being measured, not predicted. What matters is where the score stood, and which way it was moving, before the decline began.</li>
 <li>Score = ${Math.round(W.momentum * 100)}% momentum (3-month and 12-month percentiles, equally) + ${Math.round(W.volatility * 100)}% volatility (${C.vol[0]}-day and ${C.vol[1]}-day percentiles equally, inverted) + ${Math.round(W.serial_corr * 100)}% serial correlation (variance-ratio percentiles, with the ${C.sc_short}-day and ${C.sc_window}-day windows weighted equally). Every component blends a short and a long window so the score can react to a change without resting on one noisy reading. Where serial correlation cannot be ranked, the other two are re-weighted.</li>
-<li>Five levels: very favorable at ${C.cuts[3]} or above, favorable at ${C.cuts[2]} or above, hostile at ${C.cuts[1]} or below, very hostile at ${C.cuts[0]} or below, and neutral between ${C.cuts[1]} and ${C.cuts[2]}. The cut points are round numbers chosen by judgment, not fitted. A narrow-advance flag moves a favorable or very favorable reading down one level and does nothing else.</li>
+<li>Five levels: very favorable at ${C.cuts[3]} or above, favorable at ${C.cuts[2]} or above, hostile at ${C.cuts[1]} or below, very hostile at ${C.cuts[0]} or below, and neutral between ${C.cuts[1]} and ${C.cuts[2]}. The cut points are round numbers chosen by judgment, not fitted. The label follows from the score alone.</li>
 <li>Because the inputs are percentiles of each ETF's own history, the same label on two ETFs does not mean the same absolute risk.</li>
 </ul>
 
@@ -1055,7 +1046,7 @@ $("foot").textContent = "Generated " + D.generated + " · data through " + D.aso
 DASH_BODY = r'''<div id="banner"></div>
 <h1>Leverage Environment</h1>
 <p class="sub">How friendly current conditions are to holding daily-reset 2x or 3x exposure to SPY, EFA and EEM,
-judged by momentum, volatility, serial correlation and breadth. Every reading is shown with its percentile against that
+judged by momentum, volatility and serial correlation, with breadth shown alongside for context. Every reading is shown with its percentile against that
 ETF's own history. <span id="asof"></span></p>
 <p class="small">This is a monitoring tool built on approximations, not investment advice. Read
 <a href="#method">Methodology and caveats</a> before relying on any number here.
@@ -1103,7 +1094,6 @@ $("cards").innerHTML = A.map((a) => {
     '<div class="nm">' + d.name + " · " + d.index + "</div>" +
     '<div class="verdict"><span class="lab"><span class="ico ' + d.label + '">' + (ICON[d.label] || "") + "</span>" + lname(d.label) + "</span>" +
     '<span class="sc">score ' + (d.score == null ? "n/a" : d.score.toFixed(0)) + " of 100</span></div>" +
-    (d.narrow ? '<span class="flag">⚠ Narrow advance: near its high on weak or falling breadth</span>' : "") +
     "<dl>" +
     '<dt class="h">Momentum</dt>' +
     row("3 months", spct(c.mom_3m.value) + " · " + pctText("mom_3m", c.mom_3m.pct)) +
@@ -1117,7 +1107,7 @@ $("cards").innerHTML = A.map((a) => {
     row("Lag-1 autocorrelation, 1-year", num(c.ac1.value) + " (noise band ±" + band.toFixed(2) + ")") +
     row("Variance ratio 5 / 10 day, 3-month window", num(c.vr5_s.value) + " / " + num(c.vr10_s.value)) +
     row("Variance ratio 5 / 10 / 20 day, 1-year window", num(c.vr5.value) + " / " + num(c.vr10.value) + " / " + num(c.vr20.value)) +
-    '<dt class="h">Breadth (' + d.b_members + " of " + d.b_total + " " + d.breadth_kind + ")</dt>" +
+    '<dt class="h">Breadth (' + d.b_members + " of " + d.b_total + " " + d.breadth_kind + "; not in the score)</dt>" +
     row("Up over 12 months, equal / index weight", pct(c.b12.value, 0) + " / " + pct(d.b12w, 0)) +
     row("Up over 3 months, equal / index weight", pct(c.b3.value, 0) + " / " + pct(d.b3w, 0)) +
     "</dl></article>";
@@ -1276,9 +1266,10 @@ const first = (a, i) => i ? "" : "<strong>" + a + "</strong>";
 const f0 = (x) => x == null ? "n/a" : x.toFixed(0);
 
 tbl("sum", [["ETF"], ["Label"], ["Score", 1], ["Momentum component", 1], ["Volatility component", 1], ["Serial-correlation component", 1],
-  ["Trading days in this label", 1], ["12-month rank", 1], ["Narrow-advance flag"]],
+  ["Trading days in this label", 1], ["12-month rank", 1],
+  ["Breadth: up over 3 months", 1], ["Breadth: up over 12 months", 1]],
   A.map((a) => { const d = D.assets[a]; return ["<strong>" + a + "</strong>", lab(d.label), f0(d.score), f0(d.fav.momentum), f0(d.fav.volatility), f0(d.fav.serial),
-    R.assets[a].streak, d.rank_12m + " of " + A.length, d.narrow ? "⚠ Yes" : "No"]; }));
+    R.assets[a].streak, d.rank_12m + " of " + A.length, pct(d.cells.b3.value, 0), pct(d.cells.b12.value, 0)]; }));
 
 $("full").innerHTML = A.map((a) => etfHead(a) + tbl(null,
   [["Metric"], ["Today", 1], ["Percentile"], ["For leverage"], ["1 month ago", 1], ["3 months ago", 1], ["1 year ago", 1],

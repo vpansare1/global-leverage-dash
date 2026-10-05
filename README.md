@@ -11,7 +11,7 @@ against that ETF's own history since 1998:
 | Momentum | 3-month and 12-month total return (dividend- and split-adjusted) |
 | Volatility | 21- and 63-day realized volatility, plus the yearly drag implied at 2x and 3x |
 | Serial correlation | Variance ratios over 3-month and 1-year windows, and 1-year lag-1 autocorrelation |
-| Breadth | Share of sector ETFs (SPY) or country ETFs (EFA, EEM) with a positive 3- and 12-month return |
+| Breadth | Share of sector ETFs (SPY) or country ETFs (EFA, EEM) with a positive 3- and 12-month return; shown for context, not part of the score |
 
 It also simulates how a daily-reset 2x and 3x fund actually compounded over the
 past year, and checks the composite label against what followed historically.
