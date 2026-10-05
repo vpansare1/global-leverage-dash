@@ -36,10 +36,12 @@ HISTORY_START = "1998-01-01"   # earliest date used for percentile ranking and c
 TRADING_DAYS = 252
 
 MOM_SHORT, MOM_LONG = 21, 252  # 1-month and 12-month momentum, in trading days
-VOL_SHORT, VOL_LONG = 21, 60   # realized-volatility windows; the score and drag use the short one,
-                               # the long one is shown for context only
-SC_WINDOW = 252                # window for autocorrelation and variance ratios
-VR_HORIZONS = (5, 10, 20)      # variance-ratio horizons, in days
+VOL_SHORT, VOL_LONG = 21, 60   # realized-volatility windows
+SC_WINDOW = 252                # long window for autocorrelation and variance ratios
+VR_HORIZONS = (5, 10, 20)      # variance-ratio horizons over the long window, in days
+SC_SHORT = 63                  # short window for variance ratios
+VR_SHORT_HORIZONS = (5, 10)    # horizons over the short window (20-day is too noisy there)
+# Every score component blends a short and a long window equally.
 MIN_RANK_OBS = 504             # observations required before a percentile is reported
 
 LEVERAGE = (2, 3)
@@ -124,13 +126,15 @@ METRICS = [
     ("vol_21", "Volatility, 21-day", "pct", False),
     ("vol_60", "Volatility, 60-day", "pct", False),
     ("ac1", "Lag-1 autocorrelation, 1-year", "num", True),
-    ("vr5", "Variance ratio, 5-day", "num", True),
-    ("vr10", "Variance ratio, 10-day", "num", True),
-    ("vr20", "Variance ratio, 20-day", "num", True),
+    ("vr5_s", "Variance ratio, 5-day (3-month window)", "num", True),
+    ("vr10_s", "Variance ratio, 10-day (3-month window)", "num", True),
+    ("vr5", "Variance ratio, 5-day (1-year window)", "num", True),
+    ("vr10", "Variance ratio, 10-day (1-year window)", "num", True),
+    ("vr20", "Variance ratio, 20-day (1-year window)", "num", True),
     ("b12", "Breadth: components up over 12 months", "pct", True),
     ("b1", "Breadth: components up over 1 month", "pct", True),
 ]
-SERIAL_KEYS = ("ac1", "vr5", "vr10", "vr20")
+SERIAL_KEYS = ("ac1", "vr5_s", "vr10_s", "vr5", "vr10", "vr20")
 
 
 # --------------------------------------------------------------------------- #
@@ -391,6 +395,8 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
         f["ac1"] = rolling_autocorr(ret, SC_WINDOW)
         for q in VR_HORIZONS:
             f[f"vr{q}"] = variance_ratio(log_ret, q, SC_WINDOW)
+        for q in VR_SHORT_HORIZONS:
+            f[f"vr{q}_s"] = variance_ratio(log_ret, q, SC_SHORT)
 
         # Serial-correlation windows that touch backfilled data are not ranked.
         pos = cal.get_loc(etf_start) + SC_WINDOW + max(VR_HORIZONS)
@@ -443,9 +449,10 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
         for key, _, _, _ in METRICS:
             start = max(rank_start, meta["sc_rank_from"]) if key in SERIAL_KEYS else rank_start
             f["p_" + key] = expanding_percentile(f[key].where(f.index >= start))
-        mom = 0.75 * f["p_mom_12m"] + 0.25 * f["p_mom_1m"]
-        vol = 100.0 - f["p_vol_21"]
-        sc = f[[f"p_vr{q}" for q in VR_HORIZONS]].mean(axis=1, skipna=False)
+        mom = (f["p_mom_1m"] + f["p_mom_12m"]) / 2.0
+        vol = 100.0 - (f["p_vol_21"] + f["p_vol_60"]) / 2.0
+        sc = (f[[f"p_vr{q}_s" for q in VR_SHORT_HORIZONS]].mean(axis=1, skipna=False)
+              + f[[f"p_vr{q}" for q in VR_HORIZONS]].mean(axis=1, skipna=False)) / 2.0
         parts = pd.DataFrame({"momentum": mom, "volatility": vol, "serial_corr": sc})
         w = pd.Series(SCORE_WEIGHTS)
         score = parts.mul(w, axis=1).sum(axis=1) / parts.notna().mul(w, axis=1).sum(axis=1)
@@ -529,7 +536,7 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
         }
 
     # Weekly samples (last trading day of each week) keep the page small.
-    keys = ["mom_12m", "mom_1m", "vol_60", "vol_21", "ac1", "vr10", "b12",
+    keys = ["mom_12m", "mom_1m", "vol_60", "vol_21", "ac1", "vr10", "vr10_s", "b12",
             f"gap_{LEVERAGE[-1]}x", "score"]
     weekly = None
     series = {}
@@ -549,7 +556,8 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
         "metrics": [{"key": k, "label": lab, "fmt": fmt, "higher_better": hb}
                     for k, lab, fmt, hb in METRICS],
         "config": {"mom": [MOM_SHORT, MOM_LONG], "vol": [VOL_SHORT, VOL_LONG],
-                   "sc_window": SC_WINDOW, "vr": list(VR_HORIZONS), "min_rank": MIN_RANK_OBS,
+                   "sc_window": SC_WINDOW, "vr": list(VR_HORIZONS),
+                   "sc_short": SC_SHORT, "vr_short": list(VR_SHORT_HORIZONS), "min_rank": MIN_RANK_OBS,
                    "leverage": list(LEVERAGE), "spread": FINANCING_SPREAD, "fee": EXPENSE_RATIO,
                    "weights": SCORE_WEIGHTS, "favorable_at": FAVORABLE_AT, "hostile_at": HOSTILE_AT,
                    "horizon": BACKTEST_HORIZON, "near_high": NEAR_HIGH, "breadth_drop": BREADTH_DROP,
@@ -943,20 +951,21 @@ $("doc").innerHTML = `
 <h3>Momentum</h3>
 <ul>
 <li>Total return over ${C.mom[0]} and ${C.mom[1]} trading days. There is no trend filter or on/off gate; raw values and percentiles are shown as they are.</li>
-<li>For scoring, higher momentum counts as more favorable at both horizons. One-month returns are noisy and sometimes partially reverse, so the 12-month reading carries three quarters of the momentum weight.</li>
+<li>For scoring, higher momentum counts as more favorable at both horizons. The two horizons are blended equally: the 12-month reading is the steadier one, and the 1-month reading reacts sooner but is noisy and sometimes partially reverses.</li>
 <li>The 1-2-3 rank compares 12-month returns across the three ETFs.</li>
 </ul>
 
 <h3>Volatility</h3>
 <ul>
 <li>Annualized standard deviation of daily returns over ${C.vol[0]} and ${C.vol[1]} trading days. This is backward-looking realized volatility, not a forecast, and it can jump faster than any window can register.</li>
-<li>The score and the implied drag use the ${C.vol[0]}-day window, which reacts faster to a change in conditions but is noisier, so the label changes more often. The ${C.vol[1]}-day reading is shown for context and does not affect the score.</li>
-<li>Implied drag uses the approximation L(L-1)/2 times variance: the yearly return a daily-reset fund gives up to volatility relative to L times the unlevered return. It is quoted from the ${C.vol[0]}-day reading and ignores trend, which can offset or outweigh it.</li>
+<li>The score blends the two windows equally: the ${C.vol[0]}-day reading reacts faster to a change in conditions, and the ${C.vol[1]}-day reading is steadier. The implied drag is quoted from the ${C.vol[0]}-day reading.</li>
+<li>Implied drag uses the approximation L(L-1)/2 times variance: the yearly return a daily-reset fund gives up to volatility relative to L times the unlevered return. It ignores trend, which can offset or outweigh it.</li>
 </ul>
 
 <h3>Serial correlation</h3>
 <ul>
-<li>Daily-reset leverage gains when moves follow through and loses when they reverse. Two views over a ${C.sc_window}-day window: the correlation of each day's return with the previous day's, and variance ratios at ${C.vr.join(", ")} days (the variance of multi-day returns divided by what a random walk would give; above 1 means trending).</li>
+<li>Daily-reset leverage gains when moves follow through and loses when they reverse. Two views: the correlation of each day's return with the previous day's over ${C.sc_window} days, and variance ratios (the variance of multi-day returns divided by what a random walk would give; above 1 means trending). Variance ratios are measured at ${C.vr.join(", ")} days over a ${C.sc_window}-day window and at ${C.vr_short.join(" and ")} days over a ${C.sc_short}-day window.</li>
+<li>The ${C.sc_short}-day window reacts sooner but is much noisier: its sampling error is about twice that of the ${C.sc_window}-day window, which is why the 20-day ratio is not computed over it.</li>
 <li>This is the weakest signal here. The sampling error on a ${C.sc_window}-day autocorrelation is about ${(1 / Math.sqrt(C.sc_window)).toFixed(2)}, so readings inside roughly plus or minus ${(2 / Math.sqrt(C.sc_window)).toFixed(2)} cannot be told apart from zero. Variance ratios use overlapping returns and are biased slightly below 1 in short samples. It gets the smallest weight in the score for these reasons.</li>
 <li>EFA and EEM hold shares that trade while the US market is closed, so even the ETFs carry some artificial day-to-day correlation. Their absolute readings are not directly comparable with SPY's.</li>
 </ul>
@@ -973,7 +982,7 @@ $("doc").innerHTML = `
 
 <h3>Composite score and label</h3>
 <ul>
-<li>Score = ${Math.round(W.momentum * 100)}% momentum (three quarters 12-month, one quarter 1-month percentile) + ${Math.round(W.volatility * 100)}% volatility (the ${C.vol[0]}-day percentile, inverted) + ${Math.round(W.serial_corr * 100)}% serial correlation (average of the three variance-ratio percentiles). Where serial correlation cannot be ranked, the other two are re-weighted.</li>
+<li>Score = ${Math.round(W.momentum * 100)}% momentum (1-month and 12-month percentiles, equally) + ${Math.round(W.volatility * 100)}% volatility (${C.vol[0]}-day and ${C.vol[1]}-day percentiles equally, inverted) + ${Math.round(W.serial_corr * 100)}% serial correlation (variance-ratio percentiles, with the ${C.sc_short}-day and ${C.sc_window}-day windows weighted equally). Every component blends a short and a long window so the score can react to a change without resting on one noisy reading. Where serial correlation cannot be ranked, the other two are re-weighted.</li>
 <li>Favorable at ${C.favorable_at} or above, hostile at ${C.hostile_at} or below, neutral between. A narrow-advance flag downgrades favorable to neutral and does nothing else.</li>
 <li>Because the inputs are percentiles of each ETF's own history, the same label on two ETFs does not mean the same absolute risk.</li>
 </ul>
@@ -1049,12 +1058,13 @@ $("cards").innerHTML = A.map((a) => {
     row("12 months", spct(c.mom_12m.value) + " · " + pctText("mom_12m", c.mom_12m.pct)) +
     row("12-month rank among the three", d.rank_12m + " of " + A.length) +
     '<dt class="h">Volatility (annualized)</dt>' +
-    row(C.vol[0] + "-day (used in the score)", pct(c.vol_21.value) + " · " + pctText("vol_21", c.vol_21.pct)) +
-    row(C.vol[1] + "-day (context)", pct(c.vol_60.value) + " · " + pctText("vol_60", c.vol_60.pct)) +
+    row(C.vol[0] + "-day", pct(c.vol_21.value) + " · " + pctText("vol_21", c.vol_21.pct)) +
+    row(C.vol[1] + "-day", pct(c.vol_60.value) + " · " + pctText("vol_60", c.vol_60.pct)) +
     row("Implied yearly drag at 2x / 3x", pct(L["2"].drag) + " / " + pct(L["3"].drag)) +
-    '<dt class="h">Serial correlation (1-year window)</dt>' +
-    row("Lag-1 autocorrelation", num(c.ac1.value) + " (noise band ±" + band.toFixed(2) + ")") +
-    row("Variance ratio 5 / 10 / 20 day", num(c.vr5.value) + " / " + num(c.vr10.value) + " / " + num(c.vr20.value)) +
+    '<dt class="h">Serial correlation</dt>' +
+    row("Lag-1 autocorrelation, 1-year", num(c.ac1.value) + " (noise band ±" + band.toFixed(2) + ")") +
+    row("Variance ratio 5 / 10 day, 3-month window", num(c.vr5_s.value) + " / " + num(c.vr10_s.value)) +
+    row("Variance ratio 5 / 10 / 20 day, 1-year window", num(c.vr5.value) + " / " + num(c.vr10.value) + " / " + num(c.vr20.value)) +
     '<dt class="h">Breadth (' + d.b_members + " of " + d.b_total + " " + d.breadth_kind + ")</dt>" +
     row("Up over 12 months, equal / index weight", pct(c.b12.value, 0) + " / " + pct(d.b12w, 0)) +
     row("Up over 1 month, equal / index weight", pct(c.b1.value, 0) + " / " + pct(d.b1w, 0)) +
@@ -1111,9 +1121,10 @@ $("bt").innerHTML = '<thead><tr><th>ETF</th><th>Label</th><th class="n">Share of
 const CHARTS = [
   { key: "mom_12m", title: "12-month momentum", note: "Total return over 252 trading days", pct: true, zero: 0 },
   { key: "mom_1m", title: "1-month momentum", note: "Total return over 21 trading days", pct: true, zero: 0 },
-  { key: "vol_21", title: "Volatility, 21-day", note: "Annualized standard deviation of daily returns; the reading used in the score", pct: true },
-  { key: "vol_60", title: "Volatility, 60-day", note: "Annualized standard deviation of daily returns; shown for context", pct: true },
-  { key: "vr10", title: "Variance ratio, 10-day", note: "Above 1 = trending, below 1 = choppy; 1-year window", zero: 1 },
+  { key: "vol_21", title: "Volatility, 21-day", note: "Annualized standard deviation of daily returns", pct: true },
+  { key: "vol_60", title: "Volatility, 60-day", note: "Annualized standard deviation of daily returns", pct: true },
+  { key: "vr10_s", title: "Variance ratio, 10-day, 3-month window", note: "Above 1 = trending, below 1 = choppy; reacts sooner, noisier", zero: 1 },
+  { key: "vr10", title: "Variance ratio, 10-day, 1-year window", note: "Above 1 = trending, below 1 = choppy; steadier", zero: 1 },
   { key: "ac1", title: "Lag-1 autocorrelation", note: "1-year window; readings inside the noise band are indistinguishable from zero", zero: 0, band: 2 / Math.sqrt(C.sc_window) },
   { key: "b12", title: "Breadth", note: "Share of sector or country ETFs with a positive 12-month return (equal weight)", pct: true },
   { key: "gap_" + TOP + "x", title: TOP + "x compounding effect, trailing year", note: "Simulated " + TOP + "x return minus " + TOP + " times the unlevered return, before costs", pct: true, zero: 0 },
