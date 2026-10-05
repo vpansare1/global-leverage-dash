@@ -9,7 +9,7 @@ against that ETF's own history since 1998:
 | Metric | What is measured |
 |---|---|
 | Momentum | 1-month and 12-month total return (dividend- and split-adjusted) |
-| Volatility | 20- and 60-day realized volatility, plus the yearly drag it implies at 2x and 3x |
+| Volatility | 21-day realized volatility (used in the score) and 60-day (context), plus the yearly drag implied at 2x and 3x |
 | Serial correlation | 1-year lag-1 autocorrelation and 5-, 10- and 20-day variance ratios |
 | Breadth | Share of sector ETFs (SPY) or country ETFs (EFA, EEM) with a positive 1- and 12-month return |
 
