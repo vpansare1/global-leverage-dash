@@ -56,7 +56,12 @@ BREADTH_DROP = 0.10            # breadth fall over 63 days that counts as narrow
 
 # Composite score (a heuristic, see the page's methodology section).
 SCORE_WEIGHTS = {"momentum": 0.40, "volatility": 0.40, "serial_corr": 0.20}
-FAVORABLE_AT, HOSTILE_AT = 60.0, 40.0
+# Five label levels, best first. A score at or above an upper cut, or at or below a
+# lower cut, takes that level; everything between the middle two cuts is neutral.
+LEVELS = (("very_favorable", "Very favorable"), ("favorable", "Favorable"), ("neutral", "Neutral"),
+          ("hostile", "Hostile"), ("very_hostile", "Very hostile"))
+LEVEL_KEYS = tuple(k for k, _ in LEVELS)
+SCORE_CUTS = (30.0, 40.0, 60.0, 70.0)   # very hostile <= 30, hostile <= 40, favorable >= 60, very favorable >= 70
 BACKTEST_HORIZON = 63
 
 # Detail report
@@ -459,9 +464,13 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
         f["score"] = score.where(mom.notna() & vol.notna())
         f["fav_momentum"], f["fav_volatility"], f["fav_serial"] = mom, vol, sc
         label = pd.Series("neutral", index=f.index, dtype=object)
-        label[f["score"] >= FAVORABLE_AT] = "favorable"
-        label[f["score"] <= HOSTILE_AT] = "hostile"
-        label[(label == "favorable") & (f["narrow"] == 1)] = "neutral"
+        label[f["score"] >= SCORE_CUTS[2]] = "favorable"
+        label[f["score"] >= SCORE_CUTS[3]] = "very_favorable"
+        label[f["score"] <= SCORE_CUTS[1]] = "hostile"
+        label[f["score"] <= SCORE_CUTS[0]] = "very_hostile"
+        narrow = f["narrow"] == 1                      # a narrow advance costs one level
+        label[narrow & (label == "favorable")] = "neutral"
+        label[narrow & (label == "very_favorable")] = "favorable"
         f["label"] = label.where(f["score"].notna())
 
     return {"frames": frames, "info": info, "asof": asof, "rank_start": rank_start,
@@ -505,7 +514,7 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
                            "drag": _num(vol_drag(last["vol_21"], L))}
         ef = f[(f.index > meta["etf_start"]) & f["label"].notna() & f[f"fwd_net_{LEVERAGE[-1]}x"].notna()]
         backtest = []
-        for lab in ("favorable", "neutral", "hostile"):
+        for lab in LEVEL_KEYS:
             g = ef[ef["label"] == lab]
             row = {"label": lab, "days": int(len(g)), "share": _num(len(g) / max(len(ef), 1), 3),
                    "windows": int(len(g) // BACKTEST_HORIZON)}
@@ -559,7 +568,8 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
                    "sc_window": SC_WINDOW, "vr": list(VR_HORIZONS),
                    "sc_short": SC_SHORT, "vr_short": list(VR_SHORT_HORIZONS), "min_rank": MIN_RANK_OBS,
                    "leverage": list(LEVERAGE), "spread": FINANCING_SPREAD, "fee": EXPENSE_RATIO,
-                   "weights": SCORE_WEIGHTS, "favorable_at": FAVORABLE_AT, "hostile_at": HOSTILE_AT,
+                   "weights": SCORE_WEIGHTS, "cuts": list(SCORE_CUTS),
+                   "levels": [{"key": k, "name": n} for k, n in LEVELS],
                    "horizon": BACKTEST_HORIZON, "near_high": NEAR_HIGH, "breadth_drop": BREADTH_DROP,
                    "breadth_min": BREADTH_MIN_MEMBERS,
                    "breadth": {a: ASSETS[a]["breadth"] for a in CORE}},
@@ -627,7 +637,7 @@ def make_report(res: dict, payload: dict) -> dict:
                                "fg": compound(f[f"dg_{top}x"], h).shift(-h) - top * f1})
             fw = fw[era & fw["fn"].notna()]
             by_horizon[str(h)] = {lab: _fwd_stats(fw[f["label"].reindex(fw.index) == lab], top)
-                                  for lab in ("favorable", "neutral", "hostile")}
+                                  for lab in LEVEL_KEYS}
             if h == BACKTEST_HORIZON:
                 fwd63 = fw
         score = f["score"].reindex(fwd63.index)
@@ -789,7 +799,7 @@ p{margin:6px 0}.sub{color:var(--ink2);max-width:78ch}.small{font-size:13px;color
 .verdict{display:flex;align-items:baseline;gap:10px;margin:6px 0 2px}
 .verdict .lab{font-size:22px;font-weight:650;display:flex;align-items:center;gap:7px}
 .verdict .sc{color:var(--ink2);font-size:13px}
-.ico{font-size:13px}.ico.favorable{color:var(--good)}.ico.hostile{color:var(--crit)}.ico.neutral{color:var(--muted)}
+.ico{font-size:13px;letter-spacing:-2px;margin-right:2px}.ico.favorable,.ico.very_favorable{color:var(--good)}.ico.hostile,.ico.very_hostile{color:var(--crit)}.ico.neutral{color:var(--muted)}
 .flag{display:inline-block;font-size:12px;border:1px solid var(--border);border-radius:999px;padding:1px 8px;margin-top:4px;color:var(--ink2)}
 dl{display:grid;grid-template-columns:1fr auto;gap:3px 12px;margin:12px 0 0;font-size:13.5px}
 dt{color:var(--ink2)}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
@@ -839,7 +849,9 @@ const ord = (n) => { n = Math.round(n); const s = ["th", "st", "nd", "rd"], v = 
 const fmtv = (m, x, signed) => m.fmt === "pct" ? (signed ? spct(x) : pct(x)) : num(x);
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const COLOR = { SPY: "--s1", EFA: "--s2", EEM: "--s3" };
-const ICON = { favorable: "▲", neutral: "■", hostile: "▼" };
+const ICON = { very_favorable: "\u25B2\u25B2", favorable: "\u25B2", neutral: "\u25A0", hostile: "\u25BC", very_hostile: "\u25BC\u25BC" };
+const LEVELS = C.levels.map((l) => l.key);
+const lname = (k) => (C.levels.find((l) => l.key === k) || { name: "n/a" }).name;
 const cap = (s) => s ? s[0].toUpperCase() + s.slice(1) : "n/a";
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 const favWord = (f) => f == null ? "" : f >= 66.7 ? "favorable" : f <= 33.3 ? "unfavorable" : "middling";
@@ -887,6 +899,7 @@ function plotLines(id, c, get) {
   const pad = (hi - lo) * 0.07 || 1, shapes = [];
   if (shadeEnd && shadeEnd > x0) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: x0, x1: shadeEnd, y0: 0, y1: 1, fillcolor: band, line: { width: 0 }, layer: "below" });
   if (c.band) shapes.push({ type: "rect", xref: "paper", yref: "y", x0: 0, x1: 1, y0: -c.band, y1: c.band, fillcolor: band, line: { width: 0 }, layer: "below" });
+  (c.lines || []).forEach((v) => shapes.push({ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: v * k, y1: v * k, line: { color: axis, width: 1, dash: "dot" }, layer: "below" }));
   if (c.zero != null) shapes.push({ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: c.zero * k, y1: c.zero * k, line: { color: axis, width: 1 }, layer: "below" });
   Plotly.react(id, traces, {
     margin: { l: 46, r: 12, t: 8, b: 26 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", showlegend: false,
@@ -983,7 +996,7 @@ $("doc").innerHTML = `
 <h3>Composite score and label</h3>
 <ul>
 <li>Score = ${Math.round(W.momentum * 100)}% momentum (1-month and 12-month percentiles, equally) + ${Math.round(W.volatility * 100)}% volatility (${C.vol[0]}-day and ${C.vol[1]}-day percentiles equally, inverted) + ${Math.round(W.serial_corr * 100)}% serial correlation (variance-ratio percentiles, with the ${C.sc_short}-day and ${C.sc_window}-day windows weighted equally). Every component blends a short and a long window so the score can react to a change without resting on one noisy reading. Where serial correlation cannot be ranked, the other two are re-weighted.</li>
-<li>Favorable at ${C.favorable_at} or above, hostile at ${C.hostile_at} or below, neutral between. A narrow-advance flag downgrades favorable to neutral and does nothing else.</li>
+<li>Five levels: very favorable at ${C.cuts[3]} or above, favorable at ${C.cuts[2]} or above, hostile at ${C.cuts[1]} or below, very hostile at ${C.cuts[0]} or below, and neutral between ${C.cuts[1]} and ${C.cuts[2]}. The cut points are round numbers chosen by judgment, not fitted. A narrow-advance flag moves a favorable or very favorable reading down one level and does nothing else.</li>
 <li>Because the inputs are percentiles of each ETF's own history, the same label on two ETFs does not mean the same absolute risk.</li>
 </ul>
 
@@ -1049,7 +1062,7 @@ $("cards").innerHTML = A.map((a) => {
   const band = 2 / Math.sqrt(C.sc_window);
   return '<article class="card"><div class="tk"><i class="sw" style="background:var(' + COLOR[a] + ')"></i>' + a + "</div>" +
     '<div class="nm">' + d.name + " · " + d.index + "</div>" +
-    '<div class="verdict"><span class="lab"><span class="ico ' + d.label + '">' + (ICON[d.label] || "") + "</span>" + cap(d.label) + "</span>" +
+    '<div class="verdict"><span class="lab"><span class="ico ' + d.label + '">' + (ICON[d.label] || "") + "</span>" + lname(d.label) + "</span>" +
     '<span class="sc">score ' + (d.score == null ? "n/a" : d.score.toFixed(0)) + " of 100</span></div>" +
     (d.narrow ? '<span class="flag">⚠ Narrow advance: near its high on weak or falling breadth</span>' : "") +
     "<dl>" +
@@ -1107,14 +1120,14 @@ $("lev").innerHTML = '<thead><tr><th>ETF</th><th class="n">Unlevered, past year<
 
 // ---- backtest -------------------------------------------------------------
 $("bt-intro").textContent = "For every past day, the label was computed using only data available on that day, then compared with what a simulated " +
-  "daily-reset fund did over the following " + C.horizon + " trading days. If the label is useful, favorable rows should beat hostile rows. " +
+  "daily-reset fund did over the following " + C.horizon + " trading days. If the label is useful, results should improve step by step from very hostile to very favorable. " +
   "Windows overlap heavily, so the last column gives the rough count of independent periods behind each row.";
 $("bt").innerHTML = '<thead><tr><th>ETF</th><th>Label</th><th class="n">Share of days</th><th class="n">Median 1x</th>' +
   C.leverage.map((L) => '<th class="n">Median ' + L + "x after costs</th>").join("") +
   '<th class="n">Median ' + TOP + 'x compounding effect</th><th class="n">' + TOP + 'x positive</th><th class="n">' + TOP + 'x worst 5%</th><th class="n">Independent periods</th></tr></thead><tbody>' +
   A.map((a) => D.assets[a].backtest.map((r, i) => "<tr>" +
-    (i ? "" : '<td class="nw" rowspan="3"><strong>' + a + '</strong><div class="small">from ' + (D.assets[a].backtest_from || "n/a") + "</div></td>") +
-    '<td class="nw"><span class="ico ' + r.label + '">' + ICON[r.label] + "</span> " + cap(r.label) + '</td><td class="n">' + pct(r.share, 0) + '</td><td class="n">' + spct(r.fwd_1x) + "</td>" +
+    (i ? "" : '<td class="nw" rowspan="' + LEVELS.length + '"><strong>' + a + '</strong><div class="small">from ' + (D.assets[a].backtest_from || "n/a") + "</div></td>") +
+    '<td class="nw"><span class="ico ' + r.label + '">' + ICON[r.label] + "</span> " + lname(r.label) + '</td><td class="n">' + pct(r.share, 0) + '</td><td class="n">' + spct(r.fwd_1x) + "</td>" +
     C.leverage.map((L) => '<td class="n">' + spct(r["net_" + L + "x"]) + "</td>").join("") +
     '<td class="n">' + spct(r["gap_" + TOP + "x"]) + '</td><td class="n">' + pct(r.win, 0) + '</td><td class="n">' + spct(r.p5) + '</td><td class="n">' + r.windows + "</td></tr>").join("")).join("") + "</tbody>";
 
@@ -1128,7 +1141,7 @@ const CHARTS = [
   { key: "ac1", title: "Lag-1 autocorrelation", note: "1-year window; readings inside the noise band are indistinguishable from zero", zero: 0, band: 2 / Math.sqrt(C.sc_window) },
   { key: "b12", title: "Breadth", note: "Share of sector or country ETFs with a positive 12-month return (equal weight)", pct: true },
   { key: "gap_" + TOP + "x", title: TOP + "x compounding effect, trailing year", note: "Simulated " + TOP + "x return minus " + TOP + " times the unlevered return, before costs", pct: true, zero: 0 },
-  { key: "score", title: "Composite score", note: "0 to 100; at or above " + C.favorable_at + " is favorable, at or below " + C.hostile_at + " is hostile", zero: 50 },
+  { key: "score", title: "Composite score", note: "0 to 100; lines mark the label cut points at " + C.cuts.join(", "), lines: C.cuts },
 ];
 $("legend").innerHTML = legendHtml();
 $("shade-note").textContent = shadeNote();
@@ -1208,7 +1221,7 @@ unlevered return times the leverage; the gap between it and the simulated figure
 REPORT_JS = r'''
 // ---- detail report ----------------------------------------------------------
 const R = D.report, M = D.metrics;
-const lab = (l) => l ? '<span class="ico ' + l + '">' + ICON[l] + "</span> " + cap(l) : "n/a";
+const lab = (l) => l ? '<span class="ico ' + l + '">' + ICON[l] + "</span> " + lname(l) : "n/a";
 // heads: [text, numeric?]; rows: arrays of cell html
 function tbl(id, heads, rows, el) {
   const html = "<thead><tr>" + heads.map((h) => '<th class="w' + (h[1] ? " n" : "") + '">' + h[0] + "</th>").join("") + "</tr></thead><tbody>" +
@@ -1239,7 +1252,7 @@ const OPTS = M.map((m) => ({ key: m.key, label: m.label, pct: m.fmt === "pct", h
   .concat([
     { key: "b12w", label: "Breadth: up over 12 months, index weight", pct: true },
     { key: "b1w", label: "Breadth: up over 1 month, index weight", pct: true },
-    { key: "score", label: "Composite score", zero: 50 },
+    { key: "score", label: "Composite score", lines: C.cuts },
     { key: "fav_momentum", label: "Score component: momentum", zero: 50 },
     { key: "fav_volatility", label: "Score component: volatility", zero: 50 },
     { key: "fav_serial", label: "Score component: serial correlation", zero: 50 },
@@ -1278,9 +1291,9 @@ tbl("levh", [["ETF"], ["Lookback"], ["Unlevered", 1]].concat(C.leverage.flatMap(
 const HS = R.horizons;
 $("bth-intro").textContent = "For every past day after each ETF began trading, the label as it stood that day against the simulated " + TOP +
   "x fund over the following " + HS.join(", ") + " trading days. Each horizon shows the median return after costs and the median compounding effect " +
-  "(simulated return before costs minus " + TOP + " times the unlevered return). If the label is useful, favorable rows should beat hostile rows at every horizon.";
+  "(simulated return before costs minus " + TOP + " times the unlevered return). If the label is useful, results should improve step by step from very hostile to very favorable at every horizon.";
 tbl("bth", [["ETF"], ["Label"], ["Days", 1]].concat(HS.flatMap((h) => [[h + " days: " + TOP + "x after costs", 1], [h + " days: effect", 1]])),
-  A.flatMap((a) => ["favorable", "neutral", "hostile"].map((l, i) => [first(a, i), lab(l), (R.assets[a].by_horizon[String(C.horizon)][l].days || 0).toLocaleString()].concat(
+  A.flatMap((a) => LEVELS.map((l, i) => [first(a, i), lab(l), (R.assets[a].by_horizon[String(C.horizon)][l].days || 0).toLocaleString()].concat(
     HS.flatMap((h) => { const r = R.assets[a].by_horizon[String(h)][l]; return [spct(r.net), spct(r.gap)]; })))));
 
 $("btb-intro").textContent = "The same check by score band over the following " + C.horizon + " trading days, to show whether outcomes improve steadily with the score " +
@@ -1297,7 +1310,7 @@ tbl("btm", [["ETF"], ["Metric"], [TOP + "x after costs: favorable third", 1], ["
     return [first(a, i), r.label, spct(r.fav.net), spct(r.mid.net), spct(r.unfav.net), spct(d("net")), spct(r.fav.gap), spct(r.mid.gap), spct(r.unfav.gap), spct(d("gap"))]; })));
 
 $("chg").innerHTML = A.map((a) => { const r = R.assets[a], d = D.assets[a];
-  return etfHead(a) + '<p class="small">' + cap(d.label) + " for the last " + r.streak + " trading days.</p>" +
+  return etfHead(a) + '<p class="small">' + lname(d.label) + " for the last " + r.streak + " trading days.</p>" +
     (r.changes.length ? tbl(null, [["Date"], ["From"], ["To"]], r.changes.map((c) => [c.date, lab(c.from), lab(c.to)]), true) : '<p class="small">No label changes in the past year.</p>'); }).join("");
 
 tbl("cov", [["Ticker"], ["Used for"], ["First date"], ["Last date"], ["Trading days", 1]],

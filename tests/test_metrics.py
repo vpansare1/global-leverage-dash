@@ -122,5 +122,14 @@ def test_full_pipeline_on_synthetic_data(tmp_path):
     assert len(report["report"]["coverage"]) == len(d.all_tickers())
     assert not (tmp_path / "history.csv").exists()          # synthetic runs never touch the log
     for a in d.CORE:
-        assert payload["assets"][a]["label"] in {"favorable", "neutral", "hostile"}
+        assert payload["assets"][a]["label"] in d.LEVEL_KEYS
         assert 0 <= payload["assets"][a]["score"] <= 100
+        # Every day's label must follow from that day's score and narrow-advance flag.
+        f = res["frames"][a].dropna(subset=["score"])
+        c = d.SCORE_CUTS
+        base = pd.cut(f["score"], [-np.inf, c[0], c[1], np.nextafter(c[2], 0), np.nextafter(c[3], 0), np.inf],
+                      labels=list(d.LEVEL_KEYS[::-1])).astype(str)
+        step_down = {"very_favorable": "favorable", "favorable": "neutral"}
+        expected = base.where(f["narrow"] != 1, base.map(lambda k: step_down.get(k, k)))
+        assert (f["label"] == expected).all()
+        assert set(f["label"]) == set(d.LEVEL_KEYS)
