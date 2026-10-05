@@ -1,6 +1,6 @@
 {
  "asof": "2026-10-02",
- "generated": "2026-10-05 18:46 UTC",
+ "generated": "2026-10-05 18:49 UTC",
  "synthetic": false,
  "rank_start": "1998-01-01",
  "cash_now": 0.0399,
@@ -205,29 +205,29 @@
    "backtest": [
     {
      "label": "favorable",
-     "days": 2983,
+     "days": 2982,
      "share": 0.447,
      "windows": 47,
-     "fwd_1x": 0.0341,
+     "fwd_1x": 0.034,
      "net_2x": 0.0575,
      "gap_2x": -0.002,
      "net_3x": 0.0811,
      "gap_3x": -0.0061,
-     "win": 0.683,
+     "win": 0.682,
      "p5": -0.2983
     },
     {
      "label": "neutral",
-     "days": 2030,
+     "days": 2031,
      "share": 0.305,
      "windows": 32,
-     "fwd_1x": 0.0385,
-     "net_2x": 0.0628,
+     "fwd_1x": 0.0386,
+     "net_2x": 0.0629,
      "gap_2x": -0.0017,
-     "net_3x": 0.0846,
-     "gap_3x": -0.0053,
+     "net_3x": 0.0849,
+     "gap_3x": -0.0052,
      "win": 0.66,
-     "p5": -0.338
+     "p5": -0.3379
     },
     {
      "label": "hostile",
