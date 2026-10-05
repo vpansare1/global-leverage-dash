@@ -740,7 +740,7 @@ PAGE = r'''<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/3.6.0/plotly.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@3.6.0/plotly.min.js"></script>
 <style>
 __CSS__</style>
 </head>
