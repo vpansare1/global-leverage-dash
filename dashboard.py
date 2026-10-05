@@ -863,7 +863,7 @@ const pctText = (key, p) => p == null ? "not enough history" : (key !== "mom_12m
   key === "mom_12m" ? "quintile " + quint(p) + " of 5" : ord(p) + " percentile";
 
 if (D.synthetic) $("banner").innerHTML = '<div class="banner">SYNTHETIC TEST DATA. Every number on this page is made up to test the layout and is not a market reading.</div>';
-$("asof").textContent = "Data through " + D.asof + "; ranked against history since " + D.rank_start + ".";
+$("asof").textContent = "Data through " + D.asof + "; ranked against history since " + D.rank_start + ". Page built " + D.generated + ".";
 if (D.notes.length) $("notes").innerHTML = '<div class="notes"><strong>Data notes for this run</strong><ul>' +
   D.notes.map((n) => "<li>" + esc(n) + "</li>").join("") + "</ul></div>";
 
@@ -901,7 +901,6 @@ function plotLines(id, c, get) {
   const pad = (hi - lo) * 0.07 || 1, shapes = [];
   if (shadeEnd && shadeEnd > x0) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: x0, x1: shadeEnd, y0: 0, y1: 1, fillcolor: band, line: { width: 0 }, layer: "below" });
   if (c.band) shapes.push({ type: "rect", xref: "paper", yref: "y", x0: 0, x1: 1, y0: -c.band, y1: c.band, fillcolor: band, line: { width: 0 }, layer: "below" });
-  (c.lines || []).forEach((v) => shapes.push({ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: v * k, y1: v * k, line: { color: axis, width: 1, dash: "dot" }, layer: "below" }));
   (c.red || []).forEach((v) => shapes.push({ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: v * k, y1: v * k, line: { color: css("--crit"), width: 1.2 }, layer: "above" }));
   if (c.zero != null) shapes.push({ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: c.zero * k, y1: c.zero * k, line: { color: axis, width: 1 }, layer: "below" });
   Plotly.react(id, traces, {
@@ -927,7 +926,7 @@ function plotScoreDrawdown(id, a) {
   const [x0, x1] = xRange(), ink2 = css("--ink2"), grid = css("--grid"), axis = css("--axis"), band = css("--band"), col = css(COLOR[a]);
   const dates = D.series.dates, dd = D.series[a].dd.map((v) => v == null ? null : v * 100);
   let lo = -1; dates.forEach((d, j) => { if (d >= x0 && d <= x1 && dd[j] != null) lo = Math.min(lo, dd[j]); });
-  const shapes = C.cuts.map((v) => ({ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: v, y1: v, line: { color: axis, width: 1, dash: "dot" }, layer: "below" }));
+  const shapes = [];
   C.ref_lines.forEach((v) => shapes.push({ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: v, y1: v, line: { color: css("--crit"), width: 1.2 }, layer: "above" }));
   const start = D.assets[a].proxy ? D.assets[a].etf_start : null;
   if (start && start > x0) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: x0, x1: start, y0: 0, y1: 1, fillcolor: band, line: { width: 0 }, layer: "below" });
@@ -1025,7 +1024,7 @@ $("doc").innerHTML = `
 <li>A score that falls as a drawdown deepens is not evidence of early warning. Volatility and 3-month momentum respond to the decline itself, so part of any fall in the score is the drawdown being measured, not predicted. What matters is where the score stood, and which way it was moving, before the decline began.</li>
 <li>Score = ${Math.round(W.momentum * 100)}% momentum (3-month and 12-month percentiles, equally) + ${Math.round(W.volatility * 100)}% volatility (${C.vol[0]}-day and ${C.vol[1]}-day percentiles equally, inverted) + ${Math.round(W.serial_corr * 100)}% serial correlation (variance-ratio percentiles, with the ${C.sc_short}-day and ${C.sc_window}-day windows weighted equally). Every component blends a short and a long window so the score can react to a change without resting on one noisy reading. Where serial correlation cannot be ranked, the other two are re-weighted.</li>
 <li>Five levels: very favorable at ${C.cuts[3]} or above, favorable at ${C.cuts[2]} or above, hostile at ${C.cuts[1]} or below, very hostile at ${C.cuts[0]} or below, and neutral between ${C.cuts[1]} and ${C.cuts[2]}. The cut points are round numbers chosen by judgment, not fitted. The label follows from the score alone.</li>
-<li>The red lines on the composite score charts at ${C.ref_lines.join(", ")} are visual reference levels only. They are not the label cut points and nothing is computed from them.</li>
+<li>The red lines on the composite score charts at ${C.ref_lines.join(", ")} are visual reference levels only. They are not the label cut points (${C.cuts.join(", ")}), which are no longer drawn on the charts, and nothing is computed from them.</li>
 <li>Because the inputs are percentiles of each ETF's own history, the same label on two ETFs does not mean the same absolute risk.</li>
 </ul>
 
@@ -1075,7 +1074,7 @@ effect is positive when returns trended and negative when they chopped. This is 
 <p class="small" id="shade-note"></p>
 <h3>Composite score against drawdowns</h3>
 <p class="sub">For each ETF, the composite score (top) above its drawdown from the highest prior close (bottom), on the same time axis.
-Red lines mark scores of 20, 50 and 80; dotted lines mark the label cut points. Use it to judge whether the score fell before a decline began or only as it unfolded.</p>
+Red lines mark scores of 20, 50 and 80. Use it to judge whether the score fell before a decline began or only as it unfolded.</p>
 <div id="ddcharts"></div>
 <h3>Metrics</h3>
 <div class="charts" id="charts"></div>
@@ -1174,7 +1173,7 @@ const CHARTS = [
   { key: "ac1", title: "Lag-1 autocorrelation", note: "1-year window; readings inside the noise band are indistinguishable from zero", zero: 0, band: 2 / Math.sqrt(C.sc_window) },
   { key: "b12", title: "Breadth", note: "Share of sector or country ETFs with a positive 12-month return (equal weight)", pct: true },
   { key: "gap_" + TOP + "x", title: TOP + "x compounding effect, trailing year", note: "Simulated " + TOP + "x return minus " + TOP + " times the unlevered return, before costs", pct: true, zero: 0 },
-  { key: "score", title: "Composite score", note: "0 to 100; red lines at " + C.ref_lines.join(", ") + ", dotted lines at the label cut points (" + C.cuts.join(", ") + ")", lines: C.cuts, red: C.ref_lines },
+  { key: "score", title: "Composite score", note: "0 to 100; red lines at " + C.ref_lines.join(", "), red: C.ref_lines },
 ];
 $("legend").innerHTML = legendHtml();
 $("shade-note").textContent = shadeNote();
@@ -1289,7 +1288,7 @@ const OPTS = M.map((m) => ({ key: m.key, label: m.label, pct: m.fmt === "pct", h
   .concat([
     { key: "b12w", label: "Breadth: up over 12 months, index weight", pct: true },
     { key: "b3w", label: "Breadth: up over 3 months, index weight", pct: true },
-    { key: "score", label: "Composite score", lines: C.cuts, red: C.ref_lines },
+    { key: "score", label: "Composite score", red: C.ref_lines },
     { key: "fav_momentum", label: "Score component: momentum", zero: 50 },
     { key: "fav_volatility", label: "Score component: volatility", zero: 50 },
     { key: "fav_serial", label: "Score component: serial correlation", zero: 50 },
