@@ -41,7 +41,9 @@ investment advice.
    **Run workflow** to build the first page. The page address appears on the
    finished run and under Settings > Pages.
 
-After that it runs by itself at 22:17 UTC on weekdays, after the US close.
+After that it runs by itself at about 1am Pacific time, Tuesday to Saturday, so each
+morning's page reflects the previous trading day's close. The workflow holds that
+local time across daylight saving changes.
 
 Things to know:
 

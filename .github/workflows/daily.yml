@@ -2,9 +2,12 @@ name: Daily leverage dashboard
 
 on:
   schedule:
-    # 22:17 UTC, Monday to Friday: after the US close all year
-    # (6:17pm New York in summer, 5:17pm in winter).
-    - cron: "17 22 * * 1-5"
+    # About 1am Pacific, Tuesday to Saturday, so each run picks up the previous
+    # trading day's close. GitHub schedules are fixed in UTC, so there is one
+    # entry for daylight time and one for standard time; the "check" job below
+    # lets only the one that matches the current Pacific clock go ahead.
+    - cron: "7 8 * * 2-6"     # 1:07am Pacific daylight time (UTC-7)
+    - cron: "7 9 * * 2-6"     # 1:07am Pacific standard time (UTC-8)
   workflow_dispatch:        # lets you run it by hand from the Actions tab
 
 permissions:
@@ -17,7 +20,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.decide.outputs.go }}
+    steps:
+      - id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          CRON: ${{ github.event.schedule }}
+        run: |
+          zone=$(TZ=America/Los_Angeles date +%Z)   # PDT or PST right now
+          go=true
+          if [ "$EVENT" = "schedule" ]; then
+            if [ "$CRON" = "7 8 * * 2-6" ] && [ "$zone" != "PDT" ]; then go=false; fi
+            if [ "$CRON" = "7 9 * * 2-6" ] && [ "$zone" != "PST" ]; then go=false; fi
+          fi
+          echo "event=$EVENT cron=$CRON zone=$zone go=$go"
+          echo "go=$go" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: check
+    if: needs.check.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

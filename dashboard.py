@@ -966,7 +966,7 @@ $("doc").innerHTML = `
 <ul>
 <li>Prices are daily closes from Yahoo Finance, adjusted for dividends and splits, so every return is a total return. Yahoo revises adjusted history whenever a dividend is paid, so past readings can shift slightly between runs. The source is free and unofficial and can be wrong or unavailable; if the three core ETFs cannot be fetched or the data is more than a week old, the job fails instead of publishing.</li>
 <li>The ETFs are SPY (${D.assets.SPY.index}), EFA (${efa.index}) and EEM (${eem.index}). All percentiles use one common window starting ${D.rank_start} so that no ETF is ranked against an easier history than another.</li>
-<li>The page is built after the US close on trading days. A reading dated ${D.asof} uses that day's close.</li>
+<li>The page is built overnight, at about 1am Pacific time, after each trading day. A reading dated ${D.asof} uses that day's close.</li>
 </ul>
 
 <h3>Backfilled history before the ETFs existed</h3>
