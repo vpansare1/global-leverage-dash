@@ -140,12 +140,6 @@ METRICS = [
     ("b3", "Breadth: components up over 3 months", "pct", True),
 ]
 SERIAL_KEYS = ("ac1", "vr5_s", "vr10_s", "vr5", "vr10", "vr20")
-# Persistence amplifies whatever the trend is doing, so each serial-correlation reading
-# counts as favorable when the return over the same window is positive and unfavorable
-# when it is negative: the 3-month window pairs with 3-month momentum, the 1-year
-# window with 12-month momentum.
-SERIAL_TREND = {"vr5_s": "mom_3m", "vr10_s": "mom_3m",
-                "ac1": "mom_12m", "vr5": "mom_12m", "vr10": "mom_12m", "vr20": "mom_12m"}
 
 
 # --------------------------------------------------------------------------- #
@@ -458,17 +452,10 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
         for key, _, _, _ in METRICS:
             start = max(rank_start, meta["sc_rank_from"]) if key in SERIAL_KEYS else rank_start
             f["p_" + key] = expanding_percentile(f[key].where(f.index >= start))
-        for key, _, _, higher_better in METRICS:      # orient every percentile: higher = better for leverage
-            p_ = f["p_" + key]
-            if key in SERIAL_TREND:
-                up = f[SERIAL_TREND[key]] >= 0
-                f["f_" + key] = p_.where(up, 100.0 - p_).where(f[SERIAL_TREND[key]].notna())
-            else:
-                f["f_" + key] = p_ if higher_better else 100.0 - p_
-        mom = (f["f_mom_3m"] + f["f_mom_12m"]) / 2.0
-        vol = (f["f_vol_21"] + f["f_vol_63"]) / 2.0
-        sc = (f[[f"f_vr{q}_s" for q in VR_SHORT_HORIZONS]].mean(axis=1, skipna=False)
-              + f[[f"f_vr{q}" for q in VR_HORIZONS]].mean(axis=1, skipna=False)) / 2.0
+        mom = (f["p_mom_3m"] + f["p_mom_12m"]) / 2.0
+        vol = 100.0 - (f["p_vol_21"] + f["p_vol_63"]) / 2.0
+        sc = (f[[f"p_vr{q}_s" for q in VR_SHORT_HORIZONS]].mean(axis=1, skipna=False)
+              + f[[f"p_vr{q}" for q in VR_HORIZONS]].mean(axis=1, skipna=False)) / 2.0
         parts = pd.DataFrame({"momentum": mom, "volatility": vol, "serial_corr": sc})
         w = pd.Series(SCORE_WEIGHTS)
         score = parts.mul(w, axis=1).sum(axis=1) / parts.notna().mul(w, axis=1).sum(axis=1)
@@ -510,7 +497,7 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
             pct = _num(last["p_" + key], 1)
             cells[key] = {
                 "value": _num(last[key]), "pct": pct,
-                "fav": None if pct is None else _num(last["f_" + key], 1),
+                "fav": None if pct is None else _num(pct if higher_better else 100 - pct, 1),
                 "prev": _num(f[key].iloc[-1 - MONTH]),
                 "q": [_num(hist.quantile(p)) for p in (0.01, 0.25, 0.5, 0.75, 0.99)] if len(hist) else None,
                 "n": int(len(hist)), "since": str(hist.index[0].date()) if len(hist) else None,
@@ -571,7 +558,7 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
         "synthetic": synthetic, "rank_start": str(rank_start.date()),
         "cash_now": _num(res["cash"].iloc[-1]), "cash_note": res["cash_note"],
         "notes": notes, "assets": assets, "series": series, "order": CORE,
-        "metrics": [{"key": k, "label": lab, "fmt": fmt, "higher_better": hb, "trend": SERIAL_TREND.get(k)}
+        "metrics": [{"key": k, "label": lab, "fmt": fmt, "higher_better": hb}
                     for k, lab, fmt, hb in METRICS],
         "config": {"mom": [MOM_SHORT, MOM_LONG], "vol": [VOL_SHORT, VOL_LONG],
                    "sc_window": SC_WINDOW, "vr": list(VR_HORIZONS),
@@ -662,7 +649,8 @@ def make_report(res: dict, payload: dict) -> dict:
                           **_fwd_stats(g, top)})
         alone = []
         for key, label, _, higher_better in METRICS:
-            fav = f["f_" + key].reindex(fwd63.index)
+            p = f["p_" + key].reindex(fwd63.index)
+            fav = p if higher_better else 100 - p
             thirds = {"fav": fwd63[fav >= 200 / 3], "mid": fwd63[(fav > 100 / 3) & (fav < 200 / 3)],
                       "unfav": fwd63[fav <= 100 / 3]}
             alone.append({"key": key, "label": label,
@@ -1015,7 +1003,6 @@ $("doc").innerHTML = `
 
 <h3>Serial correlation</h3>
 <ul>
-<li>Persistence amplifies the trend. Daily-reset leverage gains when moves follow through and loses when they reverse, so high serial correlation is favorable in an uptrend; in a downtrend it means losses tend to keep coming, which is the worst case for a leveraged long position. The score therefore counts a high reading as favorable when the return over the same window is positive and unfavorable when it is negative: the ${C.sc_short}-day readings follow the 3-month return and the ${C.sc_window}-day readings follow the 12-month return.</li>
 <li>Daily-reset leverage gains when moves follow through and loses when they reverse. Two views: the correlation of each day's return with the previous day's over ${C.sc_window} days, and variance ratios (the variance of multi-day returns divided by what a random walk would give; above 1 means trending). Variance ratios are measured at ${C.vr.join(", ")} days over a ${C.sc_window}-day window and at ${C.vr_short.join(" and ")} days over a ${C.sc_short}-day window.</li>
 <li>The ${C.sc_short}-day window reacts sooner but is much noisier: its sampling error is about twice that of the ${C.sc_window}-day window, which is why the 20-day ratio is not computed over it.</li>
 <li>This is the weakest signal here. The sampling error on a ${C.sc_window}-day autocorrelation is about ${(1 / Math.sqrt(C.sc_window)).toFixed(2)}, so readings inside roughly plus or minus ${(2 / Math.sqrt(C.sc_window)).toFixed(2)} cannot be told apart from zero. Variance ratios use overlapping returns and are biased slightly below 1 in short samples. It gets the smallest weight in the score for these reasons.</li>
@@ -1035,7 +1022,7 @@ $("doc").innerHTML = `
 <ul>
 <li>The score-against-drawdown charts measure drawdown on total-return prices from the highest prior close in the data (which starts in 1995), and plot the worst close of each week so that a trough between weekly samples is not missed. Before each ETF's first trading day they use the backfilled prices.</li>
 <li>A score that falls as a drawdown deepens is not evidence of early warning. Volatility and 3-month momentum respond to the decline itself, so part of any fall in the score is the drawdown being measured, not predicted. What matters is where the score stood, and which way it was moving, before the decline began.</li>
-<li>Score = ${Math.round(W.momentum * 100)}% momentum (3-month and 12-month percentiles, equally) + ${Math.round(W.volatility * 100)}% volatility (${C.vol[0]}-day and ${C.vol[1]}-day percentiles equally, inverted) + ${Math.round(W.serial_corr * 100)}% serial correlation (variance-ratio percentiles, with the ${C.sc_short}-day and ${C.sc_window}-day windows weighted equally, each flipped when the return over its window is negative). Every component blends a short and a long window so the score can react to a change without resting on one noisy reading. Where serial correlation cannot be ranked, the other two are re-weighted.</li>
+<li>Score = ${Math.round(W.momentum * 100)}% momentum (3-month and 12-month percentiles, equally) + ${Math.round(W.volatility * 100)}% volatility (${C.vol[0]}-day and ${C.vol[1]}-day percentiles equally, inverted) + ${Math.round(W.serial_corr * 100)}% serial correlation (variance-ratio percentiles, with the ${C.sc_short}-day and ${C.sc_window}-day windows weighted equally). Every component blends a short and a long window so the score can react to a change without resting on one noisy reading. Where serial correlation cannot be ranked, the other two are re-weighted.</li>
 <li>Five levels: very favorable at ${C.cuts[3]} or above, favorable at ${C.cuts[2]} or above, hostile at ${C.cuts[1]} or below, very hostile at ${C.cuts[0]} or below, and neutral between ${C.cuts[1]} and ${C.cuts[2]}. The cut points are round numbers chosen by judgment, not fitted. The label follows from the score alone.</li>
 <li>The red lines on the composite score charts at ${C.ref_lines.join(", ")} are visual reference levels only. They are not the label cut points (${C.cuts.join(", ")}), which are no longer drawn on the charts, and nothing is computed from them.</li>
 <li>Because the inputs are percentiles of each ETF's own history, the same label on two ETFs does not mean the same absolute risk.</li>
@@ -1145,7 +1132,7 @@ function rangeBar(m, c) {
 const GROUPS = { mom_3m: "Momentum", vol_21: "Volatility", ac1: "Serial correlation", b12: "Breadth" };
 $("grid").innerHTML = "<thead><tr><th>Metric</th>" + A.map((a) => "<th>" + a + "</th>").join("") + "</tr></thead><tbody>" +
   D.metrics.map((m) => (GROUPS[m.key] ? '<tr><td class="grp" colspan="' + (A.length + 1) + '">' + GROUPS[m.key] + "</td></tr>" : "") +
-    "<tr><td>" + m.label + '<div class="small">' + (m.trend ? "higher is better in an uptrend, worse in a downtrend" : m.higher_better ? "higher is better for leverage" : "lower is better for leverage") + "</div></td>" +
+    "<tr><td>" + m.label + '<div class="small">' + (m.higher_better ? "higher is better for leverage" : "lower is better for leverage") + "</div></td>" +
     A.map((a) => {
       const c = D.assets[a].cells[m.key];
       if (c.value == null) return '<td class="cell"><span class="p">n/a</span></td>';

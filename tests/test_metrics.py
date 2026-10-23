@@ -130,10 +130,4 @@ def test_full_pipeline_on_synthetic_data(tmp_path):
         base = pd.cut(f["score"], [-np.inf, c[0], c[1], np.nextafter(c[2], 0), np.nextafter(c[3], 0), np.inf],
                       labels=list(d.LEVEL_KEYS[::-1])).astype(str)
         assert (f["label"] == base).all()
-        # Serial correlation counts as favorable in an uptrend and unfavorable in a downtrend.
-        g = f.dropna(subset=["p_vr10", "p_vr10_s"])
-        up12, up3 = g["mom_12m"] >= 0, g["mom_3m"] >= 0
-        assert np.allclose(g["f_vr10"][up12], g["p_vr10"][up12]) and np.allclose(g["f_vr10"][~up12], 100 - g["p_vr10"][~up12])
-        assert np.allclose(g["f_vr10_s"][up3], g["p_vr10_s"][up3]) and np.allclose(g["f_vr10_s"][~up3], 100 - g["p_vr10_s"][~up3])
-        assert (~up12).any() and up12.any()
         assert set(f["label"]) == set(d.LEVEL_KEYS)
