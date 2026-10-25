@@ -843,7 +843,7 @@ td.nw{white-space:nowrap}#bt th{white-space:normal;vertical-align:bottom}td.grp{
 .btns{margin-left:auto;display:flex;gap:4px}
 button{font:inherit;font-size:13px;padding:4px 11px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--ink);cursor:pointer}
 button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
-.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:14px}
+.charts{display:grid;grid-template-columns:1fr;gap:14px}
 @media (max-width:520px){.charts{grid-template-columns:1fr}}
 .chart{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 8px 4px 8px;min-width:0}
 .chart h3{margin:0 8px 0;font-size:14px}.chart p{margin:0 8px;font-size:12.5px;color:var(--ink2)}
@@ -1197,7 +1197,7 @@ $("bt").innerHTML = '<thead><tr><th>ETF</th><th>Level</th><th class="n">Share of
 const CHARTS = [
   { key: "score", title: "Favorability", note: "100 minus the effective-volatility percentile; red lines at " + C.ref_lines.join(", "), red: C.ref_lines },
   { key: "eff_vol", title: "Effective volatility", note: "Blended volatility × √VR" + C.vr_q + ", annualized", pct: true },
-  { key: "vr21", title: "Variance ratio, " + C.vr_q + "-day", note: "Bias-corrected, " + C.vr_window + "-day window; below 1 = reversals within the month", zero: 1 },
+  { key: "vr21", title: "Variance ratio, " + C.vr_q + "-day", note: "Bias-corrected, " + C.vr_window + "-day window; red line at 1 (no serial correlation); below 1 = reversals within the month", red: [1] },
   { key: "base_vol", title: "Volatility, blended", note: "Root-mean-square of the " + C.vol[0] + "- and " + C.vol[1] + "-day readings", pct: true },
   { key: "vol_21", title: "Volatility, " + C.vol[0] + "-day", note: "Annualized standard deviation of daily returns", pct: true },
   { key: "vol_63", title: "Volatility, " + C.vol[1] + "-day", note: "Annualized standard deviation of daily returns", pct: true },
@@ -1338,7 +1338,7 @@ $("full").innerHTML = A.map((a) => etfHead(a) + tbl(null,
 // explorer
 const OPTS = [{ key: "score", label: "Favorability", red: C.ref_lines }]
   .concat(M.map((m) => ({ key: m.key, label: m.label, pct: m.fmt === "pct", hasP: true,
-    zero: m.key.startsWith("mom") ? 0 : m.key === "vr21" ? 1 : null })))
+    zero: m.key.startsWith("mom") ? 0 : null, red: m.key === "vr21" ? [1] : null })))
   .concat([
     { key: "b12w", label: "Breadth: up over 12 months, index weight", pct: true },
     { key: "b3w", label: "Breadth: up over 3 months, index weight", pct: true },
