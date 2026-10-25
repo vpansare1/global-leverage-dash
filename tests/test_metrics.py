@@ -26,26 +26,6 @@ def test_realized_vol_recovers_known_volatility():
     assert d.realized_vol(ret, 6000).iloc[-1] == pytest.approx(0.20, rel=0.03)
 
 
-def test_serial_correlation_of_ar1_process():
-    rng = np.random.default_rng(1)
-    phi, e = 0.2, rng.normal(0, 0.01, 6000)
-    r = np.zeros(6000)
-    for i in range(1, 6000):
-        r[i] = phi * r[i - 1] + e[i]
-    r = pd.Series(r, IDX)
-    assert d.rolling_autocorr(r, 5999).iloc[-1] == pytest.approx(phi, abs=0.03)
-    # Theoretical VR(q) for AR(1): 1 + 2 * sum_{k=1}^{q-1} (1 - k/q) * phi^k
-    for q in (5, 10):
-        theory = 1 + 2 * sum((1 - k / q) * phi ** k for k in range(1, q))
-        assert d.variance_ratio(r, q, 5900).iloc[-1] == pytest.approx(theory, abs=0.06)
-
-
-def test_variance_ratio_of_random_walk_is_one():
-    rng = np.random.default_rng(2)
-    r = pd.Series(rng.normal(0, 0.01, 6000), IDX)
-    assert d.variance_ratio(r, 10, 5900).iloc[-1] == pytest.approx(1.0, abs=0.07)
-
-
 def test_expanding_percentile_is_point_in_time():
     s = pd.Series(np.arange(1000.0), IDX[:1000])          # always a new high
     p = d.expanding_percentile(s, min_obs=100)
@@ -152,7 +132,8 @@ def test_full_pipeline_on_synthetic_data(tmp_path):
     for a in d.CORE:
         assert payload["assets"][a]["label"] in d.LEVEL_KEYS
         assert 0 <= payload["assets"][a]["score"] <= 100
-        # Every day's label must follow from that day's score alone.
+        # Favorability is 100 minus the effective-volatility percentile, and every level follows from it.
+        assert np.allclose(res["frames"][a]["score"].dropna(), 100 - res["frames"][a]["p_eff_vol"].dropna())
         f = res["frames"][a].dropna(subset=["score"])
         c = d.SCORE_CUTS
         base = pd.cut(f["score"], [-np.inf, c[0], c[1], np.nextafter(c[2], 0), np.nextafter(c[3], 0), np.inf],

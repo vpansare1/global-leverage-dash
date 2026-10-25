@@ -1,36 +1,38 @@
 # Leverage Environment dashboard
 
-A daily page that asks one question for SPY, EFA and EEM: are current conditions
-friendly or hostile to holding daily-reset 2x or 3x exposure?
+A daily page that shows, for SPY, EFA and EEM, how favorable conditions are for
+holding leverage relative to each ETF's own history. Which ETF to hold is left to a
+separate momentum system; this page only addresses how much leverage conditions support.
 
-It tracks four things for each ETF and shows every reading with its percentile
-against that ETF's own history since 1998:
+The core measure is **effective volatility**: the risk a position held for a month
+actually carries.
 
-| Metric | What is measured |
-|---|---|
-| Momentum | 3-month and 12-month total return (dividend- and split-adjusted) |
-| Volatility | 21- and 63-day realized volatility, plus the yearly drag implied at 2x and 3x |
-| Serial correlation | Variance ratios over 3-month and 1-year windows, and 1-year lag-1 autocorrelation |
-| Breadth | Share of sector ETFs (SPY) or country ETFs (EFA, EEM) with a positive 3- and 12-month return; shown for context, not part of the score |
+    effective volatility = volatility from daily returns x sqrt(VR21)
 
-It also simulates how a daily-reset 2x and 3x fund actually compounded over the
-past year, and checks the composite label against what followed historically.
+- **Volatility from daily returns** is the root-mean-square of the 21- and 63-day
+  annualized readings.
+- **VR21** is the Lo-MacKinlay bias-corrected variance ratio at a 21-day horizon,
+  estimated over two years. Below 1, daily moves have tended to reverse within the
+  month, so monthly risk is lower than daily volatility implies; above 1 it is higher.
 
-It also shows the leverage a volatility budget would support: effective volatility
-(volatility from daily returns times the square root of the bias-corrected 21-day
-variance ratio, estimated over two years) and implied leverage = budget / effective
-volatility, for budgets of 15%, 30% and 45% and caps of 2x, 2.5x and 3x. The budgets
-and caps are set by `VOL_BUDGETS` and `LEV_CAPS` at the top of `dashboard.py`.
+**Favorability** = 100 minus the point-in-time percentile of effective volatility
+against the ETF's own history, shown as five equal-frequency levels (very favorable
+to very unfavorable).
+
+The page also shows the leverage a volatility budget would support:
+implied leverage = budget / effective volatility, for budgets of 15%, 30% and 45%
+and caps of 2x, 2.5x and 3x (set by `VOL_BUDGETS` and `LEV_CAPS` in `dashboard.py`).
 
 Each run produces two pages:
 
-- **`site/index.html`, the dashboard:** today's readings, the comparison grid, a chart of each
-  ETF's composite score against its drawdown, and history charts for every metric.
-- **`site/report.html`, the detail report:** every reading with its history, a
-  chart explorer for any series (raw value or percentile), breadth by individual
-  sector and country, the leverage simulation over 3 months to 5 years, the
-  label, score bands and each metric checked against later returns at several
-  horizons, recent label changes, and how far back every data series goes.
+- **`site/index.html`, the dashboard:** a card per ETF, favorability against
+  drawdowns, the volatility-budget leverage grid and charts, the core readings
+  against history, and a point-in-time check of favorability against later outcomes.
+- **`site/report.html`, the detail report:** every reading with its history,
+  momentum and breadth for context (not part of favorability), a chart explorer,
+  breadth by sector and country, the leverage simulation over 3 months to 5 years,
+  favorability levels, bands and each metric checked against later returns,
+  recent level changes, and how far back every data series goes.
 
 **The full methodology and every caveat are written into both pages**, under
 "Methodology and caveats", using the actual numbers from each run. Read that
@@ -96,29 +98,28 @@ public CDN, so they need an internet connection; the tables do not.
 
 ## Changing things
 
-All settings are at the top of `dashboard.py`: window lengths, the leverage
-levels, financing spread and fee, the score weights and thresholds, and the
-breadth component lists.
+All settings are at the top of `dashboard.py`: window lengths, the variance-ratio
+horizon and window (`VR_Q`, `VR_WINDOW`), volatility budgets and caps, the level
+cut points, the leverage levels used in simulations, financing spread and fee, and
+the breadth component lists.
 
-Two settings deserve attention before you rely on them:
-
-- **Breadth weights** (`ASSETS[...]["breadth"]`) are approximate, fixed, hand-set
-  index weights. Update them from the fund providers' fact sheets if you use the
-  index-weighted breadth figure.
-- **Score weights** (`SCORE_WEIGHTS`, `FAVORABLE_AT`, `HOSTILE_AT`) are a
-  judgment call, not a fitted model. The page's point-in-time check shows how the
-  resulting label has lined up with later leveraged returns.
+**Breadth weights** (`ASSETS[...]["breadth"]`) are approximate, fixed, hand-set
+index weights. Update them from the fund providers' fact sheets if you use the
+index-weighted breadth figure.
 
 ## Design choices worth knowing about
 
-- **No momentum gate.** Momentum is reported as raw values and percentiles only.
-- **Breadth uses the same 3- and 12-month windows as momentum**, with no moving-average rule.
+- **No forecasting in the core measure.** Momentum and breadth are context only.
+- **The variance ratio is a risk adjustment, not a score in its own right.** Above 1
+  also means trends tend to persist, which helps a trend-following position; that is
+  a statement about returns, so it is shown but not scored.
 - **SPY breadth uses the eleven sector ETFs, not individual stocks.** Rebuilding
   stock-level breadth from today's index members would leave out companies that
   failed or were removed, which biases the historical percentile.
 - **History before the ETFs existed is backfilled** from Vanguard index mutual
   funds: a fitted Europe + Pacific blend (VEURX, VPACX) for EFA before August 2001,
-  and VEIEX for EEM before April 2003. That era's daily data suffers from stale
-  pricing, so serial-correlation readings touching it are excluded from ranking.
+  and VEIEX for EEM before April 2003. Stale pricing in that era inflates serial
+  correlation, so the variance ratio, and therefore effective volatility and
+  favorability, start only once two years of ETF prices exist.
 - **Percentiles are point-in-time** everywhere, so today's reading and the
   historical check use the same calculation.
