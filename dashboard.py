@@ -852,7 +852,7 @@ button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
 code{font-size:.92em;background:var(--band);padding:1px 4px;border-radius:4px}
 footer{margin-top:40px;color:var(--muted);font-size:12.5px}
 .plot.tall{height:360px}
-#vbcharts{display:grid;gap:14px;margin:10px 0 6px}
+#vbcharts,#dragcharts{display:grid;gap:14px;margin:10px 0 6px}
 .vbleg{display:inline-flex;gap:14px;margin-left:8px;font-weight:400}
 .vbleg span{display:inline-flex;align-items:center;gap:5px}
 td.cap{color:var(--ink2)}
@@ -1039,6 +1039,13 @@ $("doc").innerHTML = `
 <li>Not captured: the drag and skew inside a daily-reset 3x fund (Bessembinder's median effect), financing costs, and sudden gaps. Realized volatility is backward-looking and understates risk just before a shock; the cap is the protection there.</li>
 </ul>
 
+<h3>Volatility drag</h3>
+<ul>
+<li>Drag &asymp; L(L&minus;1)/2 &times; effective volatility&sup2; per year: how much a position held at leverage L for a month gives up in its typical (compound, or median) outcome compared with L times the ETF's own compound return. It does not lower the average outcome; it widens the gap between the average and the typical one, which is what compounding over many months experiences.</li>
+<li>It uses effective volatility because each sleeve is held for a month between rebalances. Inside a daily-reset fund the drag depends on daily volatility instead, so it is larger by a factor of 1 &divide; VR&#8322;&#8321; (about 40% larger at a ratio of 0.7), which is the same rebalancing cost seen from another angle. With a 1x/3x mix only the 3x portion bears that.</li>
+<li>Not included: financing costs and fees, trend (which can offset or outweigh the drag), and higher-order effects that matter in extreme volatility, when the approximation understates the damage.</li>
+</ul>
+
 <h3>Data</h3>
 <ul>
 <li>Prices are daily closes from Yahoo Finance, adjusted for dividends and splits, so every return is a total return. Yahoo revises adjusted history whenever a dividend is paid, so past readings can shift slightly between runs. If the three core ETFs cannot be fetched or the data is more than a week old, the job fails instead of publishing.</li>
@@ -1106,6 +1113,14 @@ Momentum, breadth and every result in full are in the <a href="report.html">deta
 <div class="ctl"><span>Leverage cap on the charts</span><div class="seg" id="capbtns" role="group" aria-label="Leverage cap"></div><span id="vbrange" style="margin-left:auto"></span></div>
 <p class="small" id="vbnote"></p>
 <div id="vbcharts"></div>
+
+<h2 id="drag">Volatility drag</h2>
+<p class="sub">How much a leveraged position held for a month gives up each year, in its typical (compound) outcome, compared with
+simply multiplying the ETF's own compound return by the leverage: <strong>drag &asymp; L(L&minus;1)/2 &times; effective volatility&sup2;</strong>.
+It grows with the square of volatility, so it is small in calm markets and large in turbulent ones.</p>
+<div class="scroll"><table id="dragtab"></table></div>
+<p class="small" id="dragnote"></p>
+<div id="dragcharts"></div>
 
 <h2>Readings against each ETF's own history</h2>
 <p class="sub">Each cell shows today's value, its percentile, and a bar spanning the 1st to 99th percentile of history:
@@ -1230,11 +1245,45 @@ document.querySelectorAll("#capbtns button").forEach((btn) => btn.addEventListen
   document.querySelectorAll("#capbtns button").forEach((o) => o.setAttribute("aria-pressed", String(o === btn)));
   if (window.Plotly) A.forEach((a) => plotLevDrawdown("vb" + a, a, levCap));
 }));
+// ---- volatility drag ------------------------------------------------------
+const DRAG_L = [1.5, 2, 3];
+const drag = (ev, L) => ev == null ? null : L * (L - 1) / 2 * ev * ev;
+$("dragtab").innerHTML = '<thead><tr><th>ETF</th><th class="n">Effective volatility</th>' + DRAG_L.map((L) => '<th class="n">Drag at ' + L + "x</th>").join("") +
+  DRAG_L.map((L) => '<th class="n">' + L + "x a month ago</th>").join("") + "</tr></thead><tbody>" +
+  A.map((a) => { const v = D.assets[a].vb; return "<tr><td><strong>" + a + '</strong></td><td class="n">' + pct(v.eff_vol) + "</td>" +
+    DRAG_L.map((L) => '<td class="n"><strong>' + pct(drag(v.eff_vol, L)) + "</strong></td>").join("") +
+    DRAG_L.map((L) => '<td class="n">' + pct(drag(v.eff_vol_prev, L)) + "</td>").join("") + "</tr>"; }).join("") + "</tbody>";
+$("dragnote").textContent = "Per year. Lines: solid " + DRAG_L[0] + "x, dashed " + DRAG_L[1] + "x, dotted " + DRAG_L[2] + "x. " +
+  "Based on effective volatility, so it applies to a position held for a month between rebalances; see the caveats for how it differs inside a daily-reset fund. Weekly samples.";
+$("dragcharts").innerHTML = A.map((a) => '<div class="chart"><h3><i class="sw" style="background:var(' + COLOR[a] + ');margin-right:6px"></i>' + a +
+  ': volatility drag</h3><p>Yearly drag on the typical outcome at ' + DRAG_L.join("x, ").replace(/, ([^,]*)$/, " and $1") + 'x leverage</p><div class="plot" id="dg' + a + '"></div></div>').join("");
+function plotDrag(id, a) {
+  const [x0, x1] = xRange(), ink2 = css("--ink2"), grid = css("--grid"), axis = css("--axis"), band = css("--band"), col = css(COLOR[a]);
+  const dates = D.series.dates, ev = D.series[a].eff_vol;
+  let hi = 0;
+  const traces = DRAG_L.map((L, i) => {
+    const y = ev.map((v) => v == null ? null : drag(v, L) * 100);
+    dates.forEach((d, j) => { if (d >= x0 && d <= x1 && y[j] != null) hi = Math.max(hi, y[j]); });
+    return { x: dates, y, name: L + "x", mode: "lines", line: { color: col, width: 1.6, dash: DASHES[i] }, hovertemplate: "%{y:.1f}%<extra>" + L + "x</extra>" };
+  });
+  const shapes = [];
+  const start = D.assets[a].proxy ? D.assets[a].etf_start : null;
+  if (start && start > x0) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: x0, x1: start, y0: 0, y1: 1, fillcolor: band, line: { width: 0 }, layer: "below" });
+  Plotly.react(id, traces, {
+    margin: { l: 52, r: 12, t: 8, b: 26 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", showlegend: false,
+    hovermode: "x unified", hoverlabel: { bgcolor: css("--surface"), bordercolor: axis, font: { color: css("--ink"), size: 12 } },
+    font: { family: 'system-ui,-apple-system,"Segoe UI",sans-serif', size: 11, color: ink2 },
+    xaxis: { range: [x0, x1], hoverformat: "%b %-d, %Y", showgrid: false, linecolor: axis, tickcolor: axis, fixedrange: !CAN_ZOOM },
+    yaxis: { range: [0, (hi || 1) * 1.07], gridcolor: grid, zeroline: false, ticksuffix: "%", fixedrange: !CAN_ZOOM },
+    dragmode: CAN_ZOOM ? "zoom" : false, shapes,
+  }, { displayModeBar: false, responsive: true, doubleClick: "reset" });
+}
 $("ddcharts").innerHTML = A.map((a) => '<div class="chart"><h3><i class="sw" style="background:var(' + COLOR[a] + ');margin-right:6px"></i>' + a +
   ': favorability and drawdown</h3><p>Favorability, 0 to 100 (top); decline from the highest prior close, worst close each week (bottom)</p><div class="plot tall" id="dd' + a + '"></div></div>').join("");
 function draw() {
-  if (!window.Plotly) { $("charts").innerHTML = NO_PLOTLY; $("ddcharts").innerHTML = ""; $("vbcharts").innerHTML = ""; return; }
+  if (!window.Plotly) { $("charts").innerHTML = NO_PLOTLY; $("ddcharts").innerHTML = ""; $("vbcharts").innerHTML = ""; $("dragcharts").innerHTML = ""; return; }
   A.forEach((a) => plotScoreDrawdown("dd" + a, a));
+  A.forEach((a) => plotDrag("dg" + a, a));
   A.forEach((a) => plotLevDrawdown("vb" + a, a, levCap));
   CHARTS.forEach((c, i) => plotLines("pl" + i, c, (a) => D.series[a][c.key]));
 }
