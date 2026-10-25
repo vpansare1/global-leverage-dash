@@ -853,6 +853,10 @@ code{font-size:.92em;background:var(--band);padding:1px 4px;border-radius:4px}
 footer{margin-top:40px;color:var(--muted);font-size:12.5px}
 .plot.tall{height:360px}
 #vbcharts,#dragcharts{display:grid;gap:14px;margin:10px 0 6px}
+.tog{display:flex;flex-wrap:wrap;gap:4px}
+.tog button{display:inline-flex;align-items:center;gap:6px}
+.tog button[aria-pressed="true"]{background:var(--surface);color:var(--ink)}
+.tog button[aria-pressed="false"]{opacity:.45;text-decoration:line-through}
 .vbleg{display:inline-flex;gap:14px;margin-left:8px;font-weight:400}
 .vbleg span{display:inline-flex;align-items:center;gap:5px}
 td.cap{color:var(--ink2)}
@@ -970,7 +974,7 @@ function plotScoreDrawdown(id, a) {
 }
 const DASHES = ["solid", "dash", "dot"];
 // One ETF: implied leverage at each volatility budget under one cap (top), drawdown beneath, shared time axis.
-function plotLevDrawdown(id, a, cap) {
+function plotLevDrawdown(id, a, cap, on) {
   const [x0, x1] = xRange(), ink2 = css("--ink2"), grid = css("--grid"), axis = css("--axis"), band = css("--band"), col = css(COLOR[a]);
   const dates = D.series.dates, dd = D.series[a].dd.map((v) => v == null ? null : v * 100);
   let lo = -1; dates.forEach((d, j) => { if (d >= x0 && d <= x1 && dd[j] != null) lo = Math.min(lo, dd[j]); });
@@ -979,7 +983,8 @@ function plotLevDrawdown(id, a, cap) {
   if (start && start > x0) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: x0, x1: start, y0: 0, y1: 1, fillcolor: band, line: { width: 0 }, layer: "below" });
   const yax = { gridcolor: grid, zeroline: false, fixedrange: !CAN_ZOOM, title: { font: { size: 11, color: ink2 }, standoff: 6 } };
   const traces = C.budgets.map((b, i) => ({ x: dates, y: D.series[a]["lev_" + b].map((v) => v == null ? null : Math.min(cap, v)),
-    name: b + "% budget", mode: "lines", line: { color: col, width: 1.6, dash: DASHES[i] }, yaxis: "y", hovertemplate: "%{y:.2f}x<extra>" + b + "% budget</extra>" }));
+    name: b + "% budget", mode: "lines", line: { color: col, width: 1.6, dash: DASHES[i] }, yaxis: "y", hovertemplate: "%{y:.2f}x<extra>" + b + "% budget</extra>",
+    visible: !on || on[i] }));
   traces.push({ x: dates, y: dd, name: "Drawdown", mode: "lines", line: { color: col, width: 1.2 }, fill: "tozeroy", fillcolor: rgba(col, 0.22), yaxis: "y2", hovertemplate: "%{y:.1f}%<extra>Drawdown</extra>" });
   Plotly.react(id, traces, {
     margin: { l: 58, r: 12, t: 8, b: 26 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", showlegend: false,
@@ -1110,7 +1115,8 @@ Momentum, breadth and every result in full are in the <a href="report.html">deta
 <strong>effective volatility = volatility &times; &radic;VR&#8322;&#8321;</strong>, then capped. Values below 1x mean holding part of the position in cash.</p>
 <div class="scroll"><table id="vbin"></table></div>
 <div class="scroll"><table id="vbgrid"></table></div>
-<div class="ctl"><span>Leverage cap on the charts</span><div class="seg" id="capbtns" role="group" aria-label="Leverage cap"></div><span id="vbrange" style="margin-left:auto"></span></div>
+<div class="ctl"><span>Leverage cap on the charts</span><div class="seg" id="capbtns" role="group" aria-label="Leverage cap"></div>
+<span>Show</span><div class="tog" id="vbtog" role="group" aria-label="Volatility budgets shown"></div><span id="vbrange" style="margin-left:auto"></span></div>
 <p class="small" id="vbnote"></p>
 <div id="vbcharts"></div>
 
@@ -1119,6 +1125,7 @@ Momentum, breadth and every result in full are in the <a href="report.html">deta
 simply multiplying the ETF's own compound return by the leverage: <strong>drag &asymp; L(L&minus;1)/2 &times; effective volatility&sup2;</strong>.
 It grows with the square of volatility, so it is small in calm markets and large in turbulent ones.</p>
 <div class="scroll"><table id="dragtab"></table></div>
+<div class="ctl"><span>Show</span><div class="tog" id="dragtog" role="group" aria-label="Leverage levels shown"></div><span id="dragrange" style="margin-left:auto"></span></div>
 <p class="small" id="dragnote"></p>
 <div id="dragcharts"></div>
 
@@ -1236,24 +1243,39 @@ $("vbgrid").innerHTML = '<thead><tr><th>ETF</th><th>Volatility budget</th><th cl
 let levCap = C.caps[C.caps.length - 1];
 $("capbtns").innerHTML = C.caps.map((c) => '<button data-cap="' + c + '" aria-pressed="' + (c === levCap) + '">' + c + "x</button>").join("");
 $("vbrange").innerHTML = rangeBtns();
-$("vbnote").textContent = "Lines: solid " + C.budgets[0] + "%, dashed " + C.budgets[1] + "%, dotted " + C.budgets[2] + "% volatility budget; the grey line marks 1x. " +
+$("vbnote").textContent = "Use the Show buttons to turn budgets on or off on all three charts; the grey line marks 1x. " +
   "The variance ratio needs " + C.vr_window + " trading days of the ETF's own prices, so the lines start later for the backfilled ETFs. Weekly samples.";
 $("vbcharts").innerHTML = A.map((a) => '<div class="chart"><h3><i class="sw" style="background:var(' + COLOR[a] + ');margin-right:6px"></i>' + a +
   ': implied leverage and drawdown</h3><p>Implied leverage at each budget under the selected cap (top); decline from the highest prior close (bottom)</p><div class="plot tall" id="vb' + a + '"></div></div>').join("");
 document.querySelectorAll("#capbtns button").forEach((btn) => btn.addEventListener("click", () => {
   levCap = +btn.dataset.cap;
   document.querySelectorAll("#capbtns button").forEach((o) => o.setAttribute("aria-pressed", String(o === btn)));
-  if (window.Plotly) A.forEach((a) => plotLevDrawdown("vb" + a, a, levCap));
+  if (window.Plotly) A.forEach((a) => plotLevDrawdown("vb" + a, a, levCap, vbOn));
 }));
+// ---- legend toggles (shared across the three ETF charts) -------------------
+function toggles(el, labels, state, redraw) {
+  const dash = ["", "5 3", "1.5 2.5"];
+  $(el).innerHTML = labels.map((t, i) => '<button data-i="' + i + '" aria-pressed="' + state[i] + '"><svg width="22" height="8" aria-hidden="true">' +
+    '<line x1="1" x2="21" y1="4" y2="4" stroke="currentColor" stroke-width="2" stroke-dasharray="' + dash[i] + '"/></svg>' + t + "</button>").join("");
+  $(el).querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+    const i = +b.dataset.i; state[i] = !state[i]; b.setAttribute("aria-pressed", String(state[i])); if (window.Plotly) redraw();
+  }));
+}
+const vbOn = C.budgets.map(() => true);
+toggles("vbtog", C.budgets.map((b) => b + "% budget"), vbOn, () => A.forEach((a) => plotLevDrawdown("vb" + a, a, levCap, vbOn)));
+
 // ---- volatility drag ------------------------------------------------------
 const DRAG_L = [1.5, 2, 3];
+const dragOn = DRAG_L.map(() => true);
+toggles("dragtog", DRAG_L.map((L) => L + "x"), dragOn, () => A.forEach((a) => plotDrag("dg" + a, a)));
+$("dragrange").innerHTML = rangeBtns();
 const drag = (ev, L) => ev == null ? null : L * (L - 1) / 2 * ev * ev;
 $("dragtab").innerHTML = '<thead><tr><th>ETF</th><th class="n">Effective volatility</th>' + DRAG_L.map((L) => '<th class="n">Drag at ' + L + "x</th>").join("") +
   DRAG_L.map((L) => '<th class="n">' + L + "x a month ago</th>").join("") + "</tr></thead><tbody>" +
   A.map((a) => { const v = D.assets[a].vb; return "<tr><td><strong>" + a + '</strong></td><td class="n">' + pct(v.eff_vol) + "</td>" +
     DRAG_L.map((L) => '<td class="n"><strong>' + pct(drag(v.eff_vol, L)) + "</strong></td>").join("") +
     DRAG_L.map((L) => '<td class="n">' + pct(drag(v.eff_vol_prev, L)) + "</td>").join("") + "</tr>"; }).join("") + "</tbody>";
-$("dragnote").textContent = "Per year. Lines: solid " + DRAG_L[0] + "x, dashed " + DRAG_L[1] + "x, dotted " + DRAG_L[2] + "x. " +
+$("dragnote").textContent = "Per year. Use the Show buttons to turn leverage levels on or off on all three charts; the scale adjusts to the lines shown. " +
   "Based on effective volatility, so it applies to a position held for a month between rebalances; see the caveats for how it differs inside a daily-reset fund. Weekly samples.";
 $("dragcharts").innerHTML = A.map((a) => '<div class="chart"><h3><i class="sw" style="background:var(' + COLOR[a] + ');margin-right:6px"></i>' + a +
   ': volatility drag</h3><p>Yearly drag on the typical outcome at ' + DRAG_L.join("x, ").replace(/, ([^,]*)$/, " and $1") + 'x leverage</p><div class="plot" id="dg' + a + '"></div></div>').join("");
@@ -1263,8 +1285,8 @@ function plotDrag(id, a) {
   let hi = 0;
   const traces = DRAG_L.map((L, i) => {
     const y = ev.map((v) => v == null ? null : drag(v, L) * 100);
-    dates.forEach((d, j) => { if (d >= x0 && d <= x1 && y[j] != null) hi = Math.max(hi, y[j]); });
-    return { x: dates, y, name: L + "x", mode: "lines", line: { color: col, width: 1.6, dash: DASHES[i] }, hovertemplate: "%{y:.1f}%<extra>" + L + "x</extra>" };
+    if (dragOn[i]) dates.forEach((d, j) => { if (d >= x0 && d <= x1 && y[j] != null) hi = Math.max(hi, y[j]); });
+    return { x: dates, y, name: L + "x", mode: "lines", line: { color: col, width: 1.6, dash: DASHES[i] }, hovertemplate: "%{y:.1f}%<extra>" + L + "x</extra>", visible: dragOn[i] };
   });
   const shapes = [];
   const start = D.assets[a].proxy ? D.assets[a].etf_start : null;
@@ -1284,7 +1306,7 @@ function draw() {
   if (!window.Plotly) { $("charts").innerHTML = NO_PLOTLY; $("ddcharts").innerHTML = ""; $("vbcharts").innerHTML = ""; $("dragcharts").innerHTML = ""; return; }
   A.forEach((a) => plotScoreDrawdown("dd" + a, a));
   A.forEach((a) => plotDrag("dg" + a, a));
-  A.forEach((a) => plotLevDrawdown("vb" + a, a, levCap));
+  A.forEach((a) => plotLevDrawdown("vb" + a, a, levCap, vbOn));
   CHARTS.forEach((c, i) => plotLines("pl" + i, c, (a) => D.series[a][c.key]));
 }
 bindRange(draw);
