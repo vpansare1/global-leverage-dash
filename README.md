@@ -16,6 +16,12 @@ against that ETF's own history since 1998:
 It also simulates how a daily-reset 2x and 3x fund actually compounded over the
 past year, and checks the composite label against what followed historically.
 
+It also shows the leverage a volatility budget would support: effective volatility
+(volatility from daily returns times the square root of the bias-corrected 21-day
+variance ratio, estimated over two years) and implied leverage = budget / effective
+volatility, for budgets of 15%, 30% and 45% and caps of 2x, 2.5x and 3x. The budgets
+and caps are set by `VOL_BUDGETS` and `LEV_CAPS` at the top of `dashboard.py`.
+
 Each run produces two pages:
 
 - **`site/index.html`, the dashboard:** today's readings, the comparison grid, a chart of each

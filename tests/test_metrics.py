@@ -110,6 +110,34 @@ def test_blend_weight_is_recovered():
     assert w == pytest.approx(0.65, abs=0.03) and corr > 0.99
 
 
+def test_variance_ratio_lm_unbiased_for_random_walk():
+    rng = np.random.default_rng(5)
+    est = [d.variance_ratio_lm(x, 21) for x in rng.normal(0, 0.01, (400, 504))]
+    assert np.mean(est) == pytest.approx(1.0, abs=0.04)
+    assert np.std(est) == pytest.approx(d.vr_standard_error(21, 504), rel=0.15)
+
+
+def test_variance_ratio_lm_recovers_ar1_and_ignores_scale():
+    rng = np.random.default_rng(6)
+    phi, q = -0.05, 21
+    theory = 1 + 2 * sum((1 - k / q) * phi ** k for k in range(1, q))
+    e = rng.normal(0, 0.01, (400, 504))
+    x = np.zeros_like(e)
+    for t in range(1, e.shape[1]):
+        x[:, t] = phi * x[:, t - 1] + e[:, t]
+    assert np.mean([d.variance_ratio_lm(s, q) for s in x]) == pytest.approx(theory, abs=0.04)
+    assert d.variance_ratio_lm(5 * x[0], q) == pytest.approx(d.variance_ratio_lm(x[0], q))   # volatility cancels
+
+
+def test_effective_volatility_and_implied_leverage():
+    sd, h, vr = 0.11 / math.sqrt(252), 21, 0.8
+    monthly = math.sqrt(h * sd ** 2 * vr)                       # horizon variance form
+    assert monthly == pytest.approx(sd * math.sqrt(h) * math.sqrt(vr))
+    assert monthly * math.sqrt(12) == pytest.approx(0.11 * math.sqrt(vr))
+    assert d.implied_leverage(0.15, 0.10) == pytest.approx(1.5)
+    assert d.implied_leverage(0.45, 0.10, cap=2.5) == pytest.approx(2.5)
+
+
 def test_full_pipeline_on_synthetic_data(tmp_path):
     notes = []
     res = d.build(d.fetch_synthetic(d.all_tickers()), notes, synthetic=True)
@@ -131,3 +159,9 @@ def test_full_pipeline_on_synthetic_data(tmp_path):
                       labels=list(d.LEVEL_KEYS[::-1])).astype(str)
         assert (f["label"] == base).all()
         assert set(f["label"]) == set(d.LEVEL_KEYS)
+        # Effective volatility and implied leverage follow from their definitions.
+        g = f.dropna(subset=["eff_vol"])
+        assert np.allclose(g["eff_vol"], g["base_vol"] * np.sqrt(g["vr21"]))
+        assert np.allclose(g["lev_30"], 0.30 / g["eff_vol"])
+        vb = payload["assets"][a]["vb"]
+        assert vb["eff_vol"] is not None and set(vb["lev"]) == {"15", "30", "45"}

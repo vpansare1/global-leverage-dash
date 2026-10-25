@@ -46,6 +46,14 @@ VR_SHORT_HORIZONS = (5, 10)    # horizons over the short window (20-day is too n
 MIN_RANK_OBS = 504             # observations required before a percentile is reported
 
 LEVERAGE = (2, 3)
+
+# Leverage from a volatility budget: effective volatility over the monthly holding
+# horizon = volatility from daily returns x sqrt(variance ratio at that horizon), and
+# implied leverage = budget / effective volatility, capped.
+VR_Q = 21                      # holding horizon in trading days (sleeves rebalanced monthly)
+VR_WINDOW = 504                # estimation window for the variance ratio (about 2 years)
+VOL_BUDGETS = (0.15, 0.30, 0.45)
+LEV_CAPS = (2.0, 2.5, 3.0)
 FINANCING_SPREAD = 0.005       # added to the T-bill rate on the borrowed portion
 EXPENSE_RATIO = 0.0095         # typical leveraged-ETF annual fee
 FALLBACK_CASH_RATE = 0.04      # used only if the T-bill series cannot be fetched
@@ -169,6 +177,36 @@ def variance_ratio(log_ret: pd.Series, q: int, window: int) -> pd.Series:
     """
     q_ret = log_ret.rolling(q).sum()
     return q_ret.rolling(window).var() / (q * log_ret.rolling(window).var())
+
+
+def variance_ratio_lm(r: np.ndarray, q: int) -> float:
+    """Lo-MacKinlay bias-corrected variance ratio at horizon q from one window of daily log returns.
+
+    Uses overlapping q-day sums, demeaned, with the denominator m = q(n-q+1)(1-q/n) that
+    makes the estimate unbiased (equal to 1 on average) when returns are a random walk.
+    """
+    r = np.asarray(r, dtype=float)
+    n = len(r)
+    mu = r.mean()
+    var1 = ((r - mu) ** 2).sum() / (n - 1)
+    sums = np.convolve(r, np.ones(q), "valid")
+    m = q * (n - q + 1) * (1 - q / n)
+    return float(((sums - q * mu) ** 2).sum() / m / var1)
+
+
+def rolling_variance_ratio_lm(log_ret: pd.Series, q: int, window: int) -> pd.Series:
+    return log_ret.rolling(window).apply(lambda x: variance_ratio_lm(x, q), raw=True)
+
+
+def vr_standard_error(q: int, n: int) -> float:
+    """Standard error of the overlapping variance ratio when returns are independent (Lo-MacKinlay)."""
+    return math.sqrt(2 * (2 * q - 1) * (q - 1) / (3 * q * n))
+
+
+def implied_leverage(budget: float, eff_vol, cap: float | None = None):
+    """Leverage that keeps the position's effective volatility at the budget, optionally capped."""
+    lev = budget / eff_vol
+    return lev if cap is None else np.minimum(lev, cap)
 
 
 def expanding_percentile(s: pd.Series, min_obs: int = MIN_RANK_OBS) -> pd.Series:
@@ -403,6 +441,16 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
         for q in VR_SHORT_HORIZONS:
             f[f"vr{q}_s"] = variance_ratio(log_ret, q, SC_SHORT)
 
+        # Volatility-budget leverage. The variance ratio is left blank wherever its window
+        # touches backfilled prices, because stale fund pricing inflates serial correlation.
+        f["vr21"] = rolling_variance_ratio_lm(log_ret, VR_Q, VR_WINDOW)
+        if proxy_ret is not None:
+            f.loc[f.index < cal[min(cal.get_loc(etf_start) + VR_WINDOW, len(cal) - 1)], "vr21"] = np.nan
+        f["base_vol"] = np.sqrt((f["vol_21"] ** 2 + f["vol_63"] ** 2) / 2.0)
+        f["eff_vol"] = f["base_vol"] * np.sqrt(f["vr21"])
+        for b in VOL_BUDGETS:
+            f[f"lev_{round(b * 100)}"] = implied_leverage(b, f["eff_vol"])     # uncapped
+
         # Serial-correlation windows that touch backfilled data are not ranked.
         pos = cal.get_loc(etf_start) + SC_WINDOW + max(VR_HORIZONS)
         sc_rank_from = cal[min(pos, len(cal) - 1)] if proxy_ret is not None else cal[0]
@@ -536,12 +584,18 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
             "b_members": int(last["b12n"]) if pd.notna(last["b12n"]) else 0,
             "b_total": len(cfg["breadth"]), "und_1y": _num(last["und_1y"]),
             "cells": cells, "lev": lev, "backtest": backtest,
+            "vb": {k: _num(last[k]) for k in ("vol_21", "vol_63", "base_vol", "vr21", "eff_vol")}
+                  | {k + "_prev": _num(f[k].iloc[-1 - MONTH]) for k in ("vr21", "eff_vol", "base_vol")}
+                  | {"lev": {str(round(b * 100)): _num(last[f"lev_{round(b * 100)}"]) for b in VOL_BUDGETS},
+                     "lev_prev": {str(round(b * 100)): _num(f[f"lev_{round(b * 100)}"].iloc[-1 - MONTH])
+                                  for b in VOL_BUDGETS},
+                     "vr_from": str(f["vr21"].first_valid_index().date()) if f["vr21"].notna().any() else None},
             "backtest_from": str(ef.index[0].date()) if len(ef) else None,
         }
 
     # Weekly samples (last trading day of each week) keep the page small.
     keys = ["mom_12m", "mom_3m", "vol_63", "vol_21", "ac1", "vr10", "vr10_s", "b12",
-            f"gap_{LEVERAGE[-1]}x", "score"]
+            f"gap_{LEVERAGE[-1]}x", "score", "vr21", "eff_vol"] + [f"lev_{round(b * 100)}" for b in VOL_BUDGETS]
     weekly = None
     series = {}
     for a in CORE:
@@ -561,6 +615,8 @@ def make_payload(res: dict, notes: list[str], synthetic: bool) -> dict:
         "metrics": [{"key": k, "label": lab, "fmt": fmt, "higher_better": hb}
                     for k, lab, fmt, hb in METRICS],
         "config": {"mom": [MOM_SHORT, MOM_LONG], "vol": [VOL_SHORT, VOL_LONG],
+                   "vr_q": VR_Q, "vr_window": VR_WINDOW, "vr_se": _num(vr_standard_error(VR_Q, VR_WINDOW), 3),
+                   "budgets": [round(b * 100) for b in VOL_BUDGETS], "caps": list(LEV_CAPS),
                    "sc_window": SC_WINDOW, "vr": list(VR_HORIZONS),
                    "sc_short": SC_SHORT, "vr_short": list(VR_SHORT_HORIZONS), "min_rank": MIN_RANK_OBS,
                    "leverage": list(LEVERAGE), "spread": FINANCING_SPREAD, "fee": EXPENSE_RATIO,
@@ -596,7 +652,8 @@ def make_report(res: dict, payload: dict) -> dict:
     frames, info, px, asof = res["frames"], res["info"], res["px"], res["asof"]
     rank_start, top = res["rank_start"], LEVERAGE[-1]
     metric_keys = [m[0] for m in METRICS]
-    extra = ["b12w", "b3w", "und_1y", "score", "fav_momentum", "fav_volatility", "fav_serial"] \
+    extra = ["b12w", "b3w", "und_1y", "score", "fav_momentum", "fav_volatility", "fav_serial",
+             "vr21", "eff_vol", "base_vol"] + [f"lev_{round(b * 100)}" for b in VOL_BUDGETS] \
         + [f"{k}_{L}x" for L in LEVERAGE for k in ("gap", "net")]
     series, assets = {}, {}
     for a in CORE:
@@ -709,7 +766,8 @@ def write_outputs(payload: dict, out_dir: Path, history_path: Path | None,
         return
     # One row per ETF per day: a genuine point-in-time record that builds up over time.
     fields = ["date", "etf", "label", "score"] + [m["key"] for m in payload["metrics"]] \
-        + ["p_" + m["key"] for m in payload["metrics"]]
+        + ["p_" + m["key"] for m in payload["metrics"]] \
+        + ["base_vol", "vr21", "eff_vol"] + [f"lev_{b}" for b in payload["config"]["budgets"]]
     rows = []
     if history_path.exists():
         with history_path.open(newline="") as fh:
@@ -720,6 +778,10 @@ def write_outputs(payload: dict, out_dir: Path, history_path: Path | None,
         for m in payload["metrics"]:
             row[m["key"]] = d["cells"][m["key"]]["value"]
             row["p_" + m["key"]] = d["cells"][m["key"]]["pct"]
+        for k in ("base_vol", "vr21", "eff_vol"):
+            row[k] = d["vb"][k]
+        for b, v in d["vb"]["lev"].items():
+            row["lev_" + b] = v                       # uncapped
         rows.append(row)
     history_path.parent.mkdir(parents=True, exist_ok=True)
     with history_path.open("w", newline="") as fh:
@@ -832,6 +894,10 @@ button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
 code{font-size:.92em;background:var(--band);padding:1px 4px;border-radius:4px}
 footer{margin-top:40px;color:var(--muted);font-size:12.5px}
 .plot.tall{height:360px}
+#vbcharts{display:grid;gap:14px;margin:10px 0 6px}
+.vbleg{display:inline-flex;gap:14px;margin-left:8px;font-weight:400}
+.vbleg span{display:inline-flex;align-items:center;gap:5px}
+td.cap{color:var(--ink2)}
 #ddcharts{display:grid;gap:14px;margin:10px 0 6px}
 .ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0 4px;font-size:13.5px}
 select{font:inherit;font-size:13.5px;padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--ink);max-width:100%}
@@ -871,9 +937,9 @@ const TOP = C.leverage[C.leverage.length - 1];
 const backfilled = A.filter((a) => D.assets[a].proxy);
 const shadeEnd = backfilled.map((a) => D.assets[a].etf_start).sort().pop();
 const ZOOM_HINT = matchMedia("(pointer: coarse)").matches ? "" : " Drag across a chart to zoom in on a period or range; double-click it to reset.";
-const legendHtml = () => A.map((a) => '<span><i class="line" style="background:var(' + COLOR[a] + ')"></i>' + a + "</span>").join("") +
-  '<div class="btns" role="group" aria-label="Time range">' + [["1Y", 1], ["5Y", 5], ["10Y", 10], ["All", 0]].map(([t, y]) =>
+const rangeBtns = () => '<div class="btns" role="group" aria-label="Time range">' + [["1Y", 1], ["5Y", 5], ["10Y", 10], ["All", 0]].map(([t, y]) =>
     '<button data-y="' + y + '" aria-pressed="' + (y === 0) + '">' + t + "</button>").join("") + "</div>";
+const legendHtml = () => A.map((a) => '<span><i class="line" style="background:var(' + COLOR[a] + ')"></i>' + a + "</span>").join("") + rangeBtns();
 const shadeNote = () => backfilled.length ? "The shaded era is backfilled from mutual funds (" +
   backfilled.map((a) => a + " before " + D.assets[a].etf_start).join(", ") + ") and is approximate; see the caveats below. Weekly samples." + ZOOM_HINT : "Weekly samples." + ZOOM_HINT;
 // Drag-to-zoom needs a mouse or trackpad; on touch screens a drag has to scroll the page.
@@ -915,7 +981,7 @@ function plotLines(id, c, get) {
 function bindRange(draw) {
   document.querySelectorAll(".btns button").forEach((b) => b.addEventListener("click", () => {
     years = +b.dataset.y;
-    document.querySelectorAll(".btns button").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+    document.querySelectorAll(".btns button").forEach((o) => o.setAttribute("aria-pressed", String(o.dataset.y === b.dataset.y)));
     draw();
   }));
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
@@ -940,6 +1006,29 @@ function plotScoreDrawdown(id, a) {
     font: { family: 'system-ui,-apple-system,"Segoe UI",sans-serif', size: 11, color: ink2 },
     xaxis: { range: [x0, x1], anchor: "y2", hoverformat: "%b %-d, %Y", showgrid: false, linecolor: axis, tickcolor: axis, fixedrange: !CAN_ZOOM },
     yaxis: Object.assign({}, yax, { domain: [0.5, 1], range: [0, 100], title: Object.assign({ text: "Score" }, yax.title) }),
+    yaxis2: Object.assign({}, yax, { domain: [0, 0.43], range: [lo * 1.08, 0], ticksuffix: "%", title: Object.assign({ text: "Drawdown" }, yax.title) }),
+    dragmode: CAN_ZOOM ? "zoom" : false, shapes,
+  }, { displayModeBar: false, responsive: true, doubleClick: "reset" });
+}
+const DASHES = ["solid", "dash", "dot"];
+// One ETF: implied leverage at each volatility budget under one cap (top), drawdown beneath, shared time axis.
+function plotLevDrawdown(id, a, cap) {
+  const [x0, x1] = xRange(), ink2 = css("--ink2"), grid = css("--grid"), axis = css("--axis"), band = css("--band"), col = css(COLOR[a]);
+  const dates = D.series.dates, dd = D.series[a].dd.map((v) => v == null ? null : v * 100);
+  let lo = -1; dates.forEach((d, j) => { if (d >= x0 && d <= x1 && dd[j] != null) lo = Math.min(lo, dd[j]); });
+  const shapes = [{ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: 1, y1: 1, line: { color: axis, width: 1 }, layer: "below" }];
+  const start = D.assets[a].proxy ? D.assets[a].etf_start : null;
+  if (start && start > x0) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: x0, x1: start, y0: 0, y1: 1, fillcolor: band, line: { width: 0 }, layer: "below" });
+  const yax = { gridcolor: grid, zeroline: false, fixedrange: !CAN_ZOOM, title: { font: { size: 11, color: ink2 }, standoff: 6 } };
+  const traces = C.budgets.map((b, i) => ({ x: dates, y: D.series[a]["lev_" + b].map((v) => v == null ? null : Math.min(cap, v)),
+    name: b + "% budget", mode: "lines", line: { color: col, width: 1.6, dash: DASHES[i] }, yaxis: "y", hovertemplate: "%{y:.2f}x<extra>" + b + "% budget</extra>" }));
+  traces.push({ x: dates, y: dd, name: "Drawdown", mode: "lines", line: { color: col, width: 1.2 }, fill: "tozeroy", fillcolor: rgba(col, 0.22), yaxis: "y2", hovertemplate: "%{y:.1f}%<extra>Drawdown</extra>" });
+  Plotly.react(id, traces, {
+    margin: { l: 58, r: 12, t: 8, b: 26 }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", showlegend: false,
+    hovermode: "x unified", hoversubplots: "axis", hoverlabel: { bgcolor: css("--surface"), bordercolor: axis, font: { color: css("--ink"), size: 12 } },
+    font: { family: 'system-ui,-apple-system,"Segoe UI",sans-serif', size: 11, color: ink2 },
+    xaxis: { range: [x0, x1], anchor: "y2", hoverformat: "%b %-d, %Y", showgrid: false, linecolor: axis, tickcolor: axis, fixedrange: !CAN_ZOOM },
+    yaxis: Object.assign({}, yax, { domain: [0.5, 1], range: [0, cap * 1.08], ticksuffix: "x", title: Object.assign({ text: "Leverage" }, yax.title) }),
     yaxis2: Object.assign({}, yax, { domain: [0, 0.43], range: [lo * 1.08, 0], ticksuffix: "%", title: Object.assign({ text: "Drawdown" }, yax.title) }),
     dragmode: CAN_ZOOM ? "zoom" : false, shapes,
   }, { displayModeBar: false, responsive: true, doubleClick: "reset" });
@@ -1018,6 +1107,16 @@ $("doc").innerHTML = `
 <li>The index-weighted figure uses approximate, fixed weights that were set by hand and are applied to all of history. Treat it as a rough cross-check on concentration, and update the weights in the script from fund fact sheets if you rely on it. Current sets: SPY: ${members("SPY")}. EFA: ${members("EFA")}. EEM: ${members("EEM")}.</li>
 </ul>
 
+<h3>Leverage from a volatility budget</h3>
+<ul>
+<li>This answers how much leverage current conditions support for a given risk budget, separately from the composite score. Direction (whether to be invested at all) is left to your own momentum system.</li>
+<li>The variance of a return over a holding period of H days is H &times; daily variance &times; VR_H, where VR_H is the variance ratio at that horizon. In volatility terms: effective volatility = volatility measured from daily returns &times; &radic;VR_H. H is ${C.vr_q} trading days, matching sleeves rebalanced monthly. A ratio below 1 means daily moves have tended to reverse within the month, so monthly risk is lower than daily volatility implies; above 1 means they have tended to continue, so it is higher.</li>
+<li>Volatility from daily returns is the root-mean-square of the ${C.vol[0]}-day and ${C.vol[1]}-day readings, so it reacts within weeks. The variance ratio uses the Lo&ndash;MacKinlay bias-corrected estimator (overlapping, demeaned ${C.vr_q}-day returns) over ${C.vr_window} trading days, so it moves slowly. Even so it is noisy: its standard error is about &plusmn;${num(C.vr_se)} when returns are independent, and larger when volatility clusters. That moves effective volatility by roughly &plusmn;${Math.round(C.vr_se * 50)}%.</li>
+<li>The variance ratio is left blank wherever its window includes backfilled mutual-fund prices, whose stale pricing inflates serial correlation, so the EFA and EEM lines start about two years after each ETF began trading.</li>
+<li>Implied leverage = budget &divide; effective volatility, then capped. Budgets are annualized, and the annualized effective volatility is monthly risk expressed on an annual scale (monthly volatility &times; &radic;12); it is not a statement about the variability of a full year's return. Values below 1x mean holding part of the position in cash.</li>
+<li>Not captured: the drag and skew inside a daily-reset 3x fund (Bessembinder's median effect), financing costs, and sudden gaps. Realized volatility is backward-looking and understates risk just before a shock; the cap is the protection there.</li>
+</ul>
+
 <h3>Composite score and label</h3>
 <ul>
 <li>The score-against-drawdown charts measure drawdown on total-return prices from the highest prior close in the data (which starts in 1995), and plot the worst close of each week so that a trough between weekly samples is not missed. Before each ETF's first trading day they use the backfilled prices.</li>
@@ -1057,6 +1156,17 @@ For every result in full, open the <a href="report.html">detail report</a>.</p>
 <div id="notes"></div>
 
 <section class="cards" id="cards"></section>
+
+<h2 id="vb">Leverage from a volatility budget</h2>
+<p class="sub">The leverage that would hold a position's risk at a chosen budget. Effective volatility is volatility measured from daily
+returns, adjusted by the 21-day variance ratio for how daily moves add up over a monthly holding period:
+<strong>effective volatility = volatility &times; &radic;VR&#8322;&#8321;</strong>, and <strong>implied leverage = budget &divide; effective volatility</strong>,
+capped. Values below 1x mean holding part of the position in cash. This is separate from the composite score above.</p>
+<div class="scroll"><table id="vbin"></table></div>
+<div class="scroll"><table id="vbgrid"></table></div>
+<div class="ctl"><span>Leverage cap on the charts</span><div class="seg" id="capbtns" role="group" aria-label="Leverage cap"></div><span id="vbrange" style="margin-left:auto"></span></div>
+<p class="small" id="vbnote"></p>
+<div id="vbcharts"></div>
 
 <h2>Readings against each ETF's own history</h2>
 <p class="sub">Each cell shows today's value, its percentile, and a bar spanning the 1st to 99th percentile of history:
@@ -1178,10 +1288,36 @@ const CHARTS = [
 $("legend").innerHTML = legendHtml();
 $("shade-note").textContent = shadeNote();
 $("charts").innerHTML = CHARTS.map((c, i) => '<div class="chart"><h3>' + c.title + "</h3><p>" + c.note + '</p><div class="plot" id="pl' + i + '"></div></div>').join("");
+// ---- volatility-budget leverage ------------------------------------------
+const xf = (v) => v == null ? "n/a" : v.toFixed(2) + "x";
+$("vbin").innerHTML = '<thead><tr><th>ETF</th><th class="n">21-day volatility</th><th class="n">63-day volatility</th><th class="n">Blended volatility</th>' +
+  '<th class="n">Variance ratio, 21-day</th><th class="n">Effective volatility</th><th class="n">Effective volatility a month ago</th></tr></thead><tbody>' +
+  A.map((a) => { const v = D.assets[a].vb; return "<tr><td><strong>" + a + '</strong></td><td class="n">' + pct(v.vol_21) + '</td><td class="n">' + pct(v.vol_63) +
+    '</td><td class="n">' + pct(v.base_vol) + '</td><td class="n">' + num(v.vr21) + " \u00B1 " + num(C.vr_se) + '</td><td class="n"><strong>' + pct(v.eff_vol) +
+    '</strong></td><td class="n">' + pct(v.eff_vol_prev) + "</td></tr>"; }).join("") + "</tbody>";
+$("vbgrid").innerHTML = '<thead><tr><th>ETF</th><th>Volatility budget</th><th class="n">Uncapped</th>' + C.caps.map((c) => '<th class="n">Cap ' + c + "x</th>").join("") +
+  '<th class="n">Uncapped a month ago</th></tr></thead><tbody>' +
+  A.flatMap((a) => C.budgets.map((b, i) => { const L = D.assets[a].vb.lev[b], P = D.assets[a].vb.lev_prev[b];
+    return "<tr>" + (i ? "<td></td>" : "<td><strong>" + a + "</strong></td>") + "<td>" + b + '%</td><td class="n">' + xf(L) + "</td>" +
+      C.caps.map((c) => L == null ? '<td class="n">n/a</td>' : (L >= c ? '<td class="n cap">' + xf(c) + " (cap)</td>" : '<td class="n"><strong>' + xf(L) + "</strong></td>")).join("") +
+      '<td class="n">' + xf(P) + "</td></tr>"; })).join("") + "</tbody>";
+let levCap = C.caps[C.caps.length - 1];
+$("capbtns").innerHTML = C.caps.map((c) => '<button data-cap="' + c + '" aria-pressed="' + (c === levCap) + '">' + c + "x</button>").join("");
+$("vbrange").innerHTML = rangeBtns();
+$("vbnote").textContent = "Lines: solid " + C.budgets[0] + "%, dashed " + C.budgets[1] + "%, dotted " + C.budgets[2] + "% volatility budget; the grey line marks 1x. " +
+  "The variance ratio needs " + C.vr_window + " trading days of the ETF's own prices, so the lines start later for the backfilled ETFs. Weekly samples.";
+$("vbcharts").innerHTML = A.map((a) => '<div class="chart"><h3><i class="sw" style="background:var(' + COLOR[a] + ');margin-right:6px"></i>' + a +
+  ': implied leverage and drawdown</h3><p>Implied leverage at each budget under the selected cap (top); decline from the highest prior close (bottom)</p><div class="plot tall" id="vb' + a + '"></div></div>').join("");
+document.querySelectorAll("#capbtns button").forEach((btn) => btn.addEventListener("click", () => {
+  levCap = +btn.dataset.cap;
+  document.querySelectorAll("#capbtns button").forEach((o) => o.setAttribute("aria-pressed", String(o === btn)));
+  if (window.Plotly) A.forEach((a) => plotLevDrawdown("vb" + a, a, levCap));
+}));
 $("ddcharts").innerHTML = A.map((a) => '<div class="chart"><h3><i class="sw" style="background:var(' + COLOR[a] + ');margin-right:6px"></i>' + a +
   ': composite score and drawdown</h3><p>Score, 0 to 100 (top); decline from the highest prior close, worst close each week (bottom)</p><div class="plot tall" id="dd' + a + '"></div></div>').join("");
 function draw() {
-  if (!window.Plotly) { $("charts").innerHTML = NO_PLOTLY; $("ddcharts").innerHTML = ""; return; }
+  if (!window.Plotly) { $("charts").innerHTML = NO_PLOTLY; $("ddcharts").innerHTML = ""; $("vbcharts").innerHTML = ""; return; }
+  A.forEach((a) => plotLevDrawdown("vb" + a, a, levCap));
   A.forEach((a) => plotScoreDrawdown("dd" + a, a));
   CHARTS.forEach((c, i) => plotLines("pl" + i, c, (a) => D.series[a][c.key]));
 }
@@ -1294,7 +1430,9 @@ const OPTS = M.map((m) => ({ key: m.key, label: m.label, pct: m.fmt === "pct", h
     { key: "fav_serial", label: "Score component: serial correlation", zero: 50 },
     { key: "und_1y", label: "Unlevered return, trailing year", pct: true, zero: 0 },
     { key: "dd", label: "Drawdown from prior high (worst close each week)", pct: true, zero: 0 },
-  ], C.leverage.flatMap((L) => [
+    { key: "vr21", label: "Variance ratio, 21-day (bias-corrected, 2-year window)", zero: 1 },
+    { key: "eff_vol", label: "Effective volatility (volatility x square root of the 21-day variance ratio)", pct: true },
+  ], C.budgets.map((b) => ({ key: "lev_" + b, label: "Implied leverage at a " + b + "% volatility budget (uncapped)", zero: 1 })), C.leverage.flatMap((L) => [
     { key: "gap_" + L + "x", label: L + "x compounding effect, trailing year (before costs)", pct: true, zero: 0 },
     { key: "net_" + L + "x", label: L + "x simulated return after costs, trailing year", pct: true, zero: 0 },
   ]));
