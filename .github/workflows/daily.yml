@@ -59,7 +59,7 @@ jobs:
       - name: Build the dashboard
         run: python dashboard.py --out site --history data/history.csv
 
-      - name: Save today's readings and both pages to the repository
+      - name: Save today's readings and the pages to the repository
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

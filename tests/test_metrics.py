@@ -118,20 +118,54 @@ def test_effective_volatility_and_implied_leverage():
     assert d.implied_leverage(0.45, 0.10, cap=2.5) == pytest.approx(2.5)
 
 
+def test_calendar_day_windows_cover_the_same_time():
+    assert [d.to_days(n, "calendar") for n in (21, 63, 126, 252, 504)] == [30, 91, 183, 365, 730]
+    assert d.to_days(63, "trading") == 63
+    rng = np.random.default_rng(8)                         # 60% annual volatility on a 365-day clock
+    ret = pd.Series(rng.normal(0, 0.60 / math.sqrt(365), 8000), pd.date_range("2000-01-01", periods=8000))
+    assert d.realized_vol(ret, 8000, 365).iloc[-1] == pytest.approx(0.60, rel=0.03)
+    flat = pd.Series([0.0] * 365, pd.date_range("2000-01-01", periods=365))
+    cost = d.compound(d.leveraged_returns(flat, 2, cash_rate=0.04, per_year=365), 365).iloc[-1]
+    assert cost == pytest.approx((1 - 0.04 / 365) ** 365 - 1)  # a year of financing, accrued daily
+
+
+def test_scale_is_recovered():
+    rng = np.random.default_rng(9)
+    n = 2000
+    p = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.004, n))), IDX[:n])
+    target = (1 + 1.6 * p.pct_change().fillna(0)).cumprod()
+    k, corr = d.fit_scale(target, p)
+    assert k == pytest.approx(1.6, abs=0.03) and corr > 0.99
+
+
+def test_weekly_samples_align_different_calendars():
+    t = pd.DataFrame({"x": np.arange(10.0), "dd": -np.arange(10.0)}, index=pd.bdate_range("2020-01-06", periods=10))
+    c = pd.DataFrame({"x": np.arange(15.0), "dd": -np.arange(15.0)}, index=pd.date_range("2020-01-04", periods=15))
+    dates, out = d._weekly_group({"T": t, "C": c}, ["T", "C"], [("x", 4, "last"), ("dd", 4, "min")])
+    assert dates == ["2020-01-10", "2020-01-17", "2020-01-18"]   # weeks end Friday; dated by the latest observation
+    assert out["T"]["x"] == [4.0, 9.0, None] and out["C"]["x"] == [6.0, 13.0, 14.0]
+    assert out["T"]["dd"] == [-4.0, -9.0, None] and out["C"]["dd"] == [-6.0, -13.0, -14.0]
+
+
 def test_full_pipeline_on_synthetic_data(tmp_path):
     notes = []
-    res = d.build(d.fetch_synthetic(d.all_tickers()), notes, synthetic=True)
-    payload = d.make_payload(res, notes, synthetic=True)
-    report = d.make_report(res, payload)
-    d.write_outputs(payload, tmp_path, tmp_path / "history.csv", report=report)
-    assert (tmp_path / "index.html").stat().st_size > 50_000
-    assert (tmp_path / "report.html").stat().st_size > 50_000
-    assert {"SPY", "EFA", "EEM"} <= set(report["report"]["assets"])
-    assert len(report["report"]["coverage"]) == len(d.all_tickers())
+    res, payloads, reports = d.run(d.fetch_synthetic(d.all_tickers()), notes, synthetic=True)
+    d.write_outputs(payloads, tmp_path, tmp_path / "history.csv", reports=reports)
+    for g, cfg in d.GROUPS.items():
+        assert (tmp_path / cfg["page"]).stat().st_size > 50_000
+        assert (tmp_path / cfg["report"]).stat().st_size > 50_000
+        assert set(reports[g]["report"]["assets"]) == set(cfg["assets"])
     assert not (tmp_path / "history.csv").exists()          # synthetic runs never touch the log
-    for a in d.CORE:
-        assert payload["assets"][a]["label"] in d.LEVEL_KEYS
-        assert 0 <= payload["assets"][a]["score"] <= 100
+    assert "b3" not in [m["key"] for m in payloads["other"]["metrics"]]   # no breadth outside equities
+    btc = payloads["other"]["assets"]["BTC-USD"]["cal"]
+    assert (btc["dpy"], btc["vr_q"], btc["vr_window"], btc["vol"]) == (365, 30, 730, [30, 91])
+    assert res["frames"]["BTC-USD"].index.dayofweek.max() == 6        # bitcoin keeps its weekends
+    assert res["info"]["TLT"]["proxy"] and not d.ASSETS["TLT"]["stale"]
+    assert res["frames"]["TLT"]["vr21"].first_valid_index() < res["info"]["TLT"]["etf_start"]   # Treasury backfill keeps its VR
+    for a in d.ALL:
+        p = payloads[d.ASSETS[a]["group"]]["assets"][a]
+        assert p["label"] in d.LEVEL_KEYS
+        assert 0 <= p["score"] <= 100
         # Favorability is 100 minus the effective-volatility percentile, and every level follows from it.
         assert np.allclose(res["frames"][a]["score"].dropna(), 100 - res["frames"][a]["p_eff_vol"].dropna())
         f = res["frames"][a].dropna(subset=["score"])
@@ -144,5 +178,18 @@ def test_full_pipeline_on_synthetic_data(tmp_path):
         g = f.dropna(subset=["eff_vol"])
         assert np.allclose(g["eff_vol"], g["base_vol"] * np.sqrt(g["vr21"]))
         assert np.allclose(g["lev_30"], 0.30 / g["eff_vol"])
-        vb = payload["assets"][a]["vb"]
-        assert vb["eff_vol"] is not None and set(vb["lev"]) == {"15", "30", "45"}
+        h = g.dropna(subset=["lev_med"])
+        assert np.allclose(h["lev_med"], h["eff_vol_med"] / h["eff_vol"])
+        vb = p["vb"]
+        assert vb["eff_vol"] is not None and set(vb["lev"]) == {"15", "30", "45"} and vb["vr63"] is not None
+
+
+def test_history_log_keeps_one_row_per_asset_and_date(tmp_path, monkeypatch):
+    res, payloads, reports = d.run(d.fetch_synthetic(d.all_tickers()), [], synthetic=True)
+    for p in payloads.values():
+        p["synthetic"] = False
+    log = tmp_path / "h.csv"
+    d.write_outputs(payloads, tmp_path, log)
+    d.write_outputs(payloads, tmp_path, log)                 # a rerun replaces, never duplicates
+    rows = pd.read_csv(log)
+    assert sorted(rows["etf"]) == sorted(d.ALL) and not rows.duplicated(["date", "etf"]).any()
