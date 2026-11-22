@@ -1,11 +1,11 @@
 {
  "asof": "2026-11-20",
- "generated": "2026-11-22 16:19 UTC",
+ "generated": "2026-11-22 17:01 UTC",
  "synthetic": false,
  "groups": {
   "equity": {
    "asof": "2026-11-20",
-   "generated": "2026-11-22 16:19 UTC",
+   "generated": "2026-11-22 17:01 UTC",
    "synthetic": false,
    "group": "equity",
    "title": "Equities",
@@ -338,7 +338,46 @@
       },
       "vr_from": "1996-12-30"
      },
-     "backtest_from": "1999-12-31"
+     "backtest_from": "1999-12-31",
+     "mom_state": {
+      "now": true,
+      "since": "2025-04-22",
+      "from": "1999-12-31",
+      "rows": [
+       {
+        "state": "beating",
+        "days": 5182,
+        "share": 0.766,
+        "median": 70.6,
+        "mean": 66.3,
+        "levels": {
+         "very_favorable": 0.368,
+         "favorable": 0.274,
+         "neutral": 0.18,
+         "unfavorable": 0.103,
+         "very_unfavorable": 0.076
+        },
+        "lev_30": 2.86,
+        "lev_med": 1.28
+       },
+       {
+        "state": "not",
+        "days": 1582,
+        "share": 0.234,
+        "median": 24.4,
+        "mean": 26.9,
+        "levels": {
+         "very_favorable": 0.006,
+         "favorable": 0.073,
+         "neutral": 0.193,
+         "unfavorable": 0.288,
+         "very_unfavorable": 0.44
+        },
+        "lev_30": 1.57,
+        "lev_med": 0.77
+       }
+      ]
+     }
     },
     "EFA": {
      "name": "Developed ex-US",
@@ -651,7 +690,46 @@
       },
       "vr_from": "2003-09-03"
      },
-     "backtest_from": "2005-08-31"
+     "backtest_from": "2005-08-31",
+     "mom_state": {
+      "now": true,
+      "since": "2025-04-14",
+      "from": "2005-08-31",
+      "rows": [
+       {
+        "state": "beating",
+        "days": 3567,
+        "share": 0.668,
+        "median": 58.1,
+        "mean": 58.0,
+        "levels": {
+         "very_favorable": 0.265,
+         "favorable": 0.216,
+         "neutral": 0.25,
+         "unfavorable": 0.15,
+         "very_unfavorable": 0.118
+        },
+        "lev_30": 2.39,
+        "lev_med": 1.07
+       },
+       {
+        "state": "not",
+        "days": 1773,
+        "share": 0.332,
+        "median": 25.3,
+        "mean": 32.1,
+        "levels": {
+         "very_favorable": 0.049,
+         "favorable": 0.121,
+         "neutral": 0.177,
+         "unfavorable": 0.242,
+         "very_unfavorable": 0.411
+        },
+        "lev_30": 1.71,
+        "lev_med": 0.78
+       }
+      ]
+     }
     },
     "EEM": {
      "name": "Emerging markets",
@@ -964,7 +1042,46 @@
       },
       "vr_from": "2005-04-14"
      },
-     "backtest_from": "2007-04-16"
+     "backtest_from": "2007-04-16",
+     "mom_state": {
+      "now": false,
+      "since": "2026-11-20",
+      "from": "2007-04-16",
+      "rows": [
+       {
+        "state": "beating",
+        "days": 3028,
+        "share": 0.614,
+        "median": 75.2,
+        "mean": 67.7,
+        "levels": {
+         "very_favorable": 0.445,
+         "favorable": 0.228,
+         "neutral": 0.15,
+         "unfavorable": 0.084,
+         "very_unfavorable": 0.093
+        },
+        "lev_30": 1.86,
+        "lev_med": 1.22
+       },
+       {
+        "state": "not",
+        "days": 1906,
+        "share": 0.386,
+        "median": 53.6,
+        "mean": 50.9,
+        "levels": {
+         "very_favorable": 0.168,
+         "favorable": 0.271,
+         "neutral": 0.194,
+         "unfavorable": 0.188,
+         "very_unfavorable": 0.179
+        },
+        "lev_30": 1.57,
+        "lev_med": 1.03
+       }
+      ]
+     }
     }
    },
    "order": [
@@ -1110,6 +1227,7 @@
      }
     ],
     "horizon": 63,
+    "mom_shade": true,
     "breadth_min": 5,
     "breadth": {
      "SPY": {
@@ -1174,7 +1292,7 @@
   },
   "other": {
    "asof": "2026-11-20",
-   "generated": "2026-11-22 16:19 UTC",
+   "generated": "2026-11-22 17:01 UTC",
    "synthetic": false,
    "group": "other",
    "title": "Gold, Treasuries and Bitcoin",
@@ -1477,7 +1595,46 @@
       },
       "vr_from": "2006-11-17"
      },
-     "backtest_from": "2008-11-18"
+     "backtest_from": "2008-11-18",
+     "mom_state": {
+      "now": false,
+      "since": "2026-10-13",
+      "from": "2008-11-18",
+      "rows": [
+       {
+        "state": "beating",
+        "days": 2857,
+        "share": 0.631,
+        "median": 59.5,
+        "mean": 57.6,
+        "levels": {
+         "very_favorable": 0.28,
+         "favorable": 0.214,
+         "neutral": 0.204,
+         "unfavorable": 0.173,
+         "very_unfavorable": 0.128
+        },
+        "lev_30": 2.06,
+        "lev_med": 1.08
+       },
+       {
+        "state": "not",
+        "days": 1673,
+        "share": 0.369,
+        "median": 74.9,
+        "mean": 67.4,
+        "levels": {
+         "very_favorable": 0.416,
+         "favorable": 0.273,
+         "neutral": 0.115,
+         "unfavorable": 0.108,
+         "very_unfavorable": 0.087
+        },
+        "lev_30": 2.37,
+        "lev_med": 1.24
+       }
+      ]
+     }
     },
     "IEF": {
      "name": "Intermediate Treasuries",
@@ -1558,15 +1715,15 @@
       },
       "vol_21": {
        "value": 0.0675,
-       "pct": 62.7,
-       "fav": 37.3,
+       "pct": 62.8,
+       "fav": 37.2,
        "prev": 0.0609,
        "q": [
         0.0295,
         0.0477,
         0.0597,
         0.0767,
-        0.1353
+        0.1354
        ],
        "n": 7267,
        "since": "1998-01-02"
@@ -1594,8 +1751,8 @@
        "q": [
         0.6916,
         0.817,
-        0.8956,
-        0.9882,
+        0.8957,
+        0.9881,
         1.2055
        ],
        "n": 7267,
@@ -1680,7 +1837,7 @@
       },
       {
        "label": "favorable",
-       "days": 1164,
+       "days": 1165,
        "share": 0.192,
        "windows": 18,
        "fwd_1x": 0.0084,
@@ -1694,16 +1851,16 @@
       },
       {
        "label": "neutral",
-       "days": 871,
+       "days": 870,
        "share": 0.144,
        "windows": 13,
        "fwd_1x": 0.017,
-       "net_2x": 0.0225,
+       "net_2x": 0.0226,
        "gap_2x": -0.0003,
-       "net_3x": 0.0327,
+       "net_3x": 0.0328,
        "gap_3x": -0.001,
-       "win": 0.659,
-       "p5": -0.1605,
+       "win": 0.66,
+       "p5": -0.1607,
        "ruin": 0.0
       },
       {
@@ -1743,7 +1900,7 @@
       "vr63": 0.5876,
       "eff_vol": 0.0562,
       "eff_vol_med": 0.058,
-      "lev_med": 1.0324,
+      "lev_med": 1.0325,
       "vr21_prev": 0.6855,
       "eff_vol_prev": 0.0491,
       "base_vol_prev": 0.0593,
@@ -1760,7 +1917,46 @@
       },
       "vr_from": "1996-12-30"
      },
-     "backtest_from": "2002-07-31"
+     "backtest_from": "2002-07-31",
+     "mom_state": {
+      "now": false,
+      "since": "2026-06-18",
+      "from": "1999-12-31",
+      "rows": [
+       {
+        "state": "beating",
+        "days": 4209,
+        "share": 0.622,
+        "median": 53.5,
+        "mean": 51.6,
+        "levels": {
+         "very_favorable": 0.275,
+         "favorable": 0.184,
+         "neutral": 0.138,
+         "unfavorable": 0.164,
+         "very_unfavorable": 0.239
+        },
+        "lev_30": 4.95,
+        "lev_med": 1.03
+       },
+       {
+        "state": "not",
+        "days": 2555,
+        "share": 0.378,
+        "median": 67.0,
+        "mean": 59.8,
+        "levels": {
+         "very_favorable": 0.36,
+         "favorable": 0.211,
+         "neutral": 0.151,
+         "unfavorable": 0.091,
+         "very_unfavorable": 0.187
+        },
+        "lev_30": 5.66,
+        "lev_med": 1.14
+       }
+      ]
+     }
     },
     "TLT": {
      "name": "Long-term Treasuries",
@@ -1832,7 +2028,7 @@
        "q": [
         0.0641,
         0.0974,
-        0.1167,
+        0.1166,
         0.1501,
         0.2888
        ],
@@ -1879,7 +2075,7 @@
         0.7335,
         0.859,
         0.9681,
-        1.2863
+        1.2864
        ],
        "n": 7267,
        "since": "1998-01-02"
@@ -2043,7 +2239,46 @@
       },
       "vr_from": "1996-12-30"
      },
-     "backtest_from": "2002-07-31"
+     "backtest_from": "2002-07-31",
+     "mom_state": {
+      "now": false,
+      "since": "2026-07-20",
+      "from": "1999-12-31",
+      "rows": [
+       {
+        "state": "beating",
+        "days": 4120,
+        "share": 0.609,
+        "median": 30.0,
+        "mean": 36.7,
+        "levels": {
+         "very_favorable": 0.105,
+         "favorable": 0.139,
+         "neutral": 0.161,
+         "unfavorable": 0.217,
+         "very_unfavorable": 0.378
+        },
+        "lev_30": 2.7,
+        "lev_med": 0.88
+       },
+       {
+        "state": "not",
+        "days": 2644,
+        "share": 0.391,
+        "median": 39.6,
+        "mean": 46.6,
+        "levels": {
+         "very_favorable": 0.218,
+         "favorable": 0.151,
+         "neutral": 0.126,
+         "unfavorable": 0.25,
+         "very_unfavorable": 0.255
+        },
+        "lev_30": 2.73,
+        "lev_med": 0.92
+       }
+      ]
+     }
     },
     "BTC-USD": {
      "name": "Bitcoin",
@@ -2326,7 +2561,46 @@
       },
       "vr_from": "2016-09-16"
      },
-     "backtest_from": "2018-09-15"
+     "backtest_from": "2018-09-15",
+     "mom_state": {
+      "now": false,
+      "since": "2025-11-16",
+      "from": "2018-09-15",
+      "rows": [
+       {
+        "state": "beating",
+        "days": 1871,
+        "share": 0.626,
+        "median": 72.1,
+        "mean": 65.4,
+        "levels": {
+         "very_favorable": 0.366,
+         "favorable": 0.299,
+         "neutral": 0.129,
+         "unfavorable": 0.141,
+         "very_unfavorable": 0.065
+        },
+        "lev_30": 0.54,
+        "lev_med": 1.3
+       },
+       {
+        "state": "not",
+        "days": 1119,
+        "share": 0.374,
+        "median": 72.5,
+        "mean": 68.4,
+        "levels": {
+         "very_favorable": 0.418,
+         "favorable": 0.247,
+         "neutral": 0.187,
+         "unfavorable": 0.148,
+         "very_unfavorable": 0.0
+        },
+        "lev_30": 0.57,
+        "lev_med": 1.28
+       }
+      ]
+     }
     }
    },
    "order": [
@@ -2459,6 +2733,7 @@
      }
     ],
     "horizon": 63,
+    "mom_shade": false,
     "breadth_min": 5,
     "breadth": {}
    }
