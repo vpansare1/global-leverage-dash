@@ -1,993 +1,2431 @@
 {
  "asof": "2026-11-20",
- "generated": "2026-11-21 16:44 UTC",
+ "generated": "2026-11-22 16:04 UTC",
  "synthetic": false,
- "rank_start": "1998-01-01",
- "cash_now": 0.0412,
- "cash_note": "13-week T-bill yield (^IRX)",
- "notes": [],
- "assets": {
-  "SPY": {
-   "name": "US large cap",
-   "index": "S&P 500",
-   "breadth_kind": "sector ETFs",
-   "etf_start": "1995-01-03",
-   "proxy": null,
-   "blend_weight": null,
-   "blend_corr": null,
-   "stale_ac_backfill": null,
-   "stale_ac_etf": null,
-   "score": 20.3,
-   "label": "unfavorable",
-   "score_prev": 81.0,
-   "dd": -0.1146,
-   "score_from": "1999-12-31",
-   "b12w": 0.875,
-   "b3w": 0.15,
-   "b_members": 11,
-   "b_total": 11,
-   "und_1y": 0.0522,
-   "cells": {
-    "eff_vol": {
-     "value": 0.1811,
-     "pct": 79.7,
-     "fav": 20.3,
-     "prev": 0.0869,
-     "q": [
-      0.0512,
-      0.0929,
-      0.122,
-      0.1688,
-      0.5197
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "base_vol": {
-     "value": 0.2175,
-     "pct": 80.3,
-     "fav": 19.7,
-     "prev": 0.1034,
-     "q": [
-      0.0615,
-      0.1086,
-      0.1427,
-      0.2034,
-      0.6186
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "vol_21": {
-     "value": 0.256,
-     "pct": 87.8,
-     "fav": 12.2,
-     "prev": 0.0959,
-     "q": [
-      0.054,
-      0.0999,
-      0.1402,
-      0.1998,
-      0.5853
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "vol_63": {
-     "value": 0.1706,
-     "pct": 62.8,
-     "fav": 37.2,
-     "prev": 0.1103,
-     "q": [
-      0.0662,
-      0.112,
-      0.1438,
-      0.2046,
-      0.5918
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "vr21": {
-     "value": 0.6929,
-     "pct": 40.4,
-     "fav": null,
-     "prev": 0.7068,
-     "q": [
-      0.5319,
-      0.6487,
-      0.7108,
-      0.7913,
-      0.9819
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "mom_3m": {
-     "value": -0.0942,
-     "pct": 7.0,
-     "fav": 7.0,
-     "prev": 0.0364,
-     "q": [
-      -0.2116,
-      -0.0141,
-      0.0363,
-      0.0718,
-      0.193
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "mom_12m": {
-     "value": 0.0522,
-     "pct": 27.5,
-     "fav": 27.5,
-     "prev": 0.1503,
-     "q": [
-      -0.3755,
-      0.0387,
-      0.1373,
-      0.2087,
-      0.4777
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "b3": {
-     "value": 0.1818,
-     "pct": 11.3,
-     "fav": 11.3,
-     "prev": 0.7273,
-     "q": [
-      0.0,
-      0.4444,
-      0.7778,
-      0.9091,
-      1.0
-     ],
-     "n": 6959,
-     "since": "1999-03-25"
-    },
-    "b12": {
-     "value": 0.8182,
-     "pct": 46.0,
-     "fav": 46.0,
-     "prev": 0.7273,
-     "q": [
-      0.0,
-      0.5556,
-      0.8889,
-      1.0,
-      1.0
-     ],
-     "n": 6770,
-     "since": "1999-12-22"
-    }
-   },
-   "lev": {
-    "2": {
-     "naive": 0.1045,
-     "gross": 0.0845,
-     "gap": -0.02,
-     "net": 0.0299,
-     "drag": 0.0655
-    },
-    "3": {
-     "naive": 0.1567,
-     "gross": 0.0943,
-     "gap": -0.0624,
-     "net": -0.0036,
-     "drag": 0.1966
-    }
-   },
-   "backtest": [
+ "groups": {
+  "equity": {
+   "asof": "2026-11-20",
+   "generated": "2026-11-22 16:04 UTC",
+   "synthetic": false,
+   "group": "equity",
+   "title": "Equities",
+   "pages": [
     {
-     "label": "very_favorable",
-     "days": 1905,
-     "share": 0.284,
-     "windows": 30,
-     "fwd_1x": 0.0305,
-     "net_2x": 0.0494,
-     "gap_2x": -0.0018,
-     "net_3x": 0.0676,
-     "gap_3x": -0.0054,
-     "win": 0.672,
-     "p5": -0.2536
+     "key": "equity",
+     "title": "Equities",
+     "page": "index.html",
+     "report": "report.html"
     },
     {
-     "label": "favorable",
-     "days": 1496,
-     "share": 0.223,
-     "windows": 23,
-     "fwd_1x": 0.036,
-     "net_2x": 0.0584,
-     "gap_2x": -0.0022,
-     "net_3x": 0.0805,
-     "gap_3x": -0.0067,
-     "win": 0.645,
-     "p5": -0.3156
-    },
-    {
-     "label": "neutral",
-     "days": 1236,
-     "share": 0.184,
-     "windows": 19,
-     "fwd_1x": 0.037,
-     "net_2x": 0.0602,
-     "gap_2x": -0.0022,
-     "net_3x": 0.081,
-     "gap_3x": -0.0066,
-     "win": 0.651,
-     "p5": -0.3495
-    },
-    {
-     "label": "unfavorable",
-     "days": 976,
-     "share": 0.146,
-     "windows": 15,
-     "fwd_1x": 0.0341,
-     "net_2x": 0.0493,
-     "gap_2x": -0.0021,
-     "net_3x": 0.0539,
-     "gap_3x": -0.0063,
-     "win": 0.573,
-     "p5": -0.4612
-    },
-    {
-     "label": "very_unfavorable",
-     "days": 1088,
-     "share": 0.162,
-     "windows": 17,
-     "fwd_1x": 0.0569,
-     "net_2x": 0.094,
-     "gap_2x": -0.0062,
-     "net_3x": 0.1172,
-     "gap_3x": -0.0187,
-     "win": 0.634,
-     "p5": -0.3945
+     "key": "other",
+     "title": "Gold, Treasuries and Bitcoin",
+     "page": "other.html",
+     "report": "other-report.html"
     }
    ],
-   "vb": {
-    "vol_21": 0.256,
-    "vol_63": 0.1706,
-    "base_vol": 0.2175,
-    "vr21": 0.6929,
-    "eff_vol": 0.1811,
-    "vr21_prev": 0.7068,
-    "eff_vol_prev": 0.0869,
-    "base_vol_prev": 0.1034,
-    "lev": {
-     "15": 0.8284,
-     "30": 1.6568,
-     "45": 2.4853
-    },
-    "lev_prev": {
-     "15": 1.7263,
-     "30": 3.4527,
-     "45": 5.179
-    },
-    "vr_from": "1996-12-30"
-   },
-   "backtest_from": "1999-12-31"
-  },
-  "EFA": {
-   "name": "Developed ex-US",
-   "index": "MSCI EAFE",
-   "breadth_kind": "country ETFs",
-   "etf_start": "2001-08-27",
-   "proxy": "67% VEURX + 33% VPACX",
-   "blend_weight": 0.67,
-   "blend_corr": 0.989,
-   "stale_ac_backfill": 0.075,
-   "stale_ac_etf": -0.101,
-   "score": 33.4,
-   "label": "unfavorable",
-   "score_prev": 84.0,
-   "dd": -0.1164,
-   "score_from": "2005-08-31",
-   "b12w": 0.8901,
-   "b3w": 0.0,
-   "b_members": 20,
-   "b_total": 20,
-   "und_1y": 0.0747,
-   "cells": {
-    "eff_vol": {
-     "value": 0.1584,
-     "pct": 66.6,
-     "fav": 33.4,
-     "prev": 0.0973,
-     "q": [
-      0.0499,
-      0.1077,
-      0.1361,
-      0.1754,
-      0.5969
-     ],
-     "n": 5843,
-     "since": "2003-09-03"
-    },
-    "base_vol": {
-     "value": 0.1945,
-     "pct": 72.1,
-     "fav": 27.9,
-     "prev": 0.1161,
-     "q": [
-      0.0678,
-      0.1239,
-      0.1532,
-      0.2001,
-      0.6096
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "vol_21": {
-     "value": 0.2238,
-     "pct": 81.5,
-     "fav": 18.5,
-     "prev": 0.1094,
-     "q": [
-      0.0598,
-      0.1162,
-      0.1474,
-      0.1969,
-      0.6503
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "vol_63": {
-     "value": 0.1597,
-     "pct": 53.2,
-     "fav": 46.8,
-     "prev": 0.1225,
-     "q": [
-      0.0704,
-      0.1249,
-      0.1552,
-      0.2068,
-      0.5868
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "vr21": {
-     "value": 0.664,
-     "pct": 22.1,
-     "fav": null,
-     "prev": 0.7016,
-     "q": [
-      0.4889,
-      0.6802,
-      0.7619,
-      0.8777,
-      1.1703
-     ],
-     "n": 5843,
-     "since": "2003-09-03"
-    },
-    "mom_3m": {
-     "value": -0.1101,
-     "pct": 7.1,
-     "fav": 7.1,
-     "prev": -0.0025,
-     "q": [
-      -0.2267,
-      -0.0299,
-      0.027,
-      0.0723,
-      0.228
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "mom_12m": {
-     "value": 0.0747,
-     "pct": 44.0,
-     "fav": 44.0,
-     "prev": 0.1278,
-     "q": [
-      -0.4469,
-      -0.0473,
-      0.107,
-      0.2049,
-      0.5225
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "b3": {
-     "value": 0.0,
-     "pct": 5.2,
-     "fav": 5.2,
-     "prev": 0.45,
-     "q": [
-      0.0,
-      0.25,
-      0.7143,
-      0.9456,
-      1.0
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "b12": {
-     "value": 0.95,
-     "pct": 67.0,
-     "fav": 67.0,
-     "prev": 0.95,
-     "q": [
-      0.0,
-      0.2857,
-      0.8,
-      1.0,
-      1.0
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    }
-   },
-   "lev": {
-    "2": {
-     "naive": 0.1494,
-     "gross": 0.1229,
-     "gap": -0.0265,
-     "net": 0.0664,
-     "drag": 0.0501
-    },
-    "3": {
-     "naive": 0.2241,
-     "gross": 0.1407,
-     "gap": -0.0834,
-     "net": 0.0385,
-     "drag": 0.1503
-    }
-   },
-   "backtest": [
-    {
-     "label": "very_favorable",
-     "days": 1012,
-     "share": 0.192,
-     "windows": 16,
-     "fwd_1x": 0.0305,
-     "net_2x": 0.051,
-     "gap_2x": -0.0012,
-     "net_3x": 0.0675,
-     "gap_3x": -0.0036,
-     "win": 0.634,
-     "p5": -0.3053
-    },
-    {
-     "label": "favorable",
-     "days": 955,
-     "share": 0.181,
-     "windows": 15,
-     "fwd_1x": 0.0249,
-     "net_2x": 0.0352,
-     "gap_2x": -0.0027,
-     "net_3x": 0.0451,
-     "gap_3x": -0.0081,
-     "win": 0.593,
-     "p5": -0.2517
-    },
-    {
-     "label": "neutral",
-     "days": 1199,
-     "share": 0.227,
-     "windows": 19,
-     "fwd_1x": 0.0192,
-     "net_2x": 0.0264,
-     "gap_2x": -0.0031,
-     "net_3x": 0.0282,
-     "gap_3x": -0.0095,
-     "win": 0.571,
-     "p5": -0.3329
-    },
-    {
+   "cash_now": 0.0412,
+   "cash_note": "13-week T-bill yield (^IRX)",
+   "notes": [],
+   "assets": {
+    "SPY": {
+     "name": "US large cap",
+     "index": "S&P 500",
+     "breadth_kind": "sector ETFs",
+     "etf_start": "1995-01-03",
+     "asof": "2026-11-20",
+     "rank_start": "1998-01-01",
+     "proxy": null,
+     "proxy_kind": null,
+     "stale": false,
+     "cal": {
+      "kind": "trading",
+      "dpy": 252,
+      "month": 21,
+      "vol": [
+       21,
+       63
+      ],
+      "mom": [
+       63,
+       252
+      ],
+      "vr_q": 21,
+      "vr_q_long": 63,
+      "vr_window": 504,
+      "vr_se": 0.227,
+      "vr_se_long": 0.403,
+      "min_rank": 504,
+      "horizon": 63,
+      "year": 252
+     },
+     "blend_weight": null,
+     "scale": null,
+     "blend_corr": null,
+     "stale_ac_backfill": null,
+     "stale_ac_etf": null,
+     "score": 20.3,
      "label": "unfavorable",
-     "days": 962,
-     "share": 0.182,
-     "windows": 15,
-     "fwd_1x": 0.0239,
-     "net_2x": 0.0306,
-     "gap_2x": -0.0035,
-     "net_3x": 0.0324,
-     "gap_3x": -0.011,
-     "win": 0.562,
-     "p5": -0.5068
+     "score_prev": 81.0,
+     "dd": -0.1146,
+     "score_from": "1999-12-31",
+     "b12w": 0.875,
+     "b3w": 0.15,
+     "b_members": 11,
+     "b_total": 11,
+     "und_1y": 0.0522,
+     "cells": {
+      "eff_vol": {
+       "value": 0.1811,
+       "pct": 79.7,
+       "fav": 20.3,
+       "prev": 0.0869,
+       "q": [
+        0.0512,
+        0.0929,
+        0.122,
+        0.1688,
+        0.5197
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "base_vol": {
+       "value": 0.2175,
+       "pct": 80.3,
+       "fav": 19.7,
+       "prev": 0.1034,
+       "q": [
+        0.0615,
+        0.1086,
+        0.1427,
+        0.2034,
+        0.6186
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vol_21": {
+       "value": 0.256,
+       "pct": 87.8,
+       "fav": 12.2,
+       "prev": 0.0959,
+       "q": [
+        0.054,
+        0.0999,
+        0.1402,
+        0.1998,
+        0.5853
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vol_63": {
+       "value": 0.1706,
+       "pct": 62.8,
+       "fav": 37.2,
+       "prev": 0.1103,
+       "q": [
+        0.0662,
+        0.112,
+        0.1438,
+        0.2046,
+        0.5918
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vr21": {
+       "value": 0.6929,
+       "pct": 40.4,
+       "fav": null,
+       "prev": 0.7068,
+       "q": [
+        0.5319,
+        0.6487,
+        0.7108,
+        0.7913,
+        0.9819
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vr63": {
+       "value": 0.6773,
+       "pct": 74.4,
+       "fav": null,
+       "prev": 0.6668,
+       "q": [
+        0.2624,
+        0.491,
+        0.5959,
+        0.6798,
+        0.9892
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "mom_3m": {
+       "value": -0.0942,
+       "pct": 7.0,
+       "fav": 7.0,
+       "prev": 0.0364,
+       "q": [
+        -0.2116,
+        -0.0141,
+        0.0363,
+        0.0718,
+        0.193
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "mom_12m": {
+       "value": 0.0522,
+       "pct": 27.5,
+       "fav": 27.5,
+       "prev": 0.1503,
+       "q": [
+        -0.3755,
+        0.0387,
+        0.1373,
+        0.2087,
+        0.4777
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "b3": {
+       "value": 0.1818,
+       "pct": 11.3,
+       "fav": 11.3,
+       "prev": 0.7273,
+       "q": [
+        0.0,
+        0.4444,
+        0.7778,
+        0.9091,
+        1.0
+       ],
+       "n": 6959,
+       "since": "1999-03-25"
+      },
+      "b12": {
+       "value": 0.8182,
+       "pct": 46.0,
+       "fav": 46.0,
+       "prev": 0.7273,
+       "q": [
+        0.0,
+        0.5556,
+        0.8889,
+        1.0,
+        1.0
+       ],
+       "n": 6770,
+       "since": "1999-12-22"
+      }
+     },
+     "lev": {
+      "2": {
+       "naive": 0.1045,
+       "gross": 0.0845,
+       "gap": -0.02,
+       "net": 0.0299,
+       "drag": 0.0655
+      },
+      "3": {
+       "naive": 0.1567,
+       "gross": 0.0943,
+       "gap": -0.0624,
+       "net": -0.0036,
+       "drag": 0.1966
+      }
+     },
+     "backtest": [
+      {
+       "label": "very_favorable",
+       "days": 1905,
+       "share": 0.284,
+       "windows": 30,
+       "fwd_1x": 0.0305,
+       "net_2x": 0.0494,
+       "gap_2x": -0.0018,
+       "net_3x": 0.0676,
+       "gap_3x": -0.0054,
+       "win": 0.672,
+       "p5": -0.2536
+      },
+      {
+       "label": "favorable",
+       "days": 1496,
+       "share": 0.223,
+       "windows": 23,
+       "fwd_1x": 0.036,
+       "net_2x": 0.0584,
+       "gap_2x": -0.0022,
+       "net_3x": 0.0805,
+       "gap_3x": -0.0067,
+       "win": 0.645,
+       "p5": -0.3156
+      },
+      {
+       "label": "neutral",
+       "days": 1236,
+       "share": 0.184,
+       "windows": 19,
+       "fwd_1x": 0.037,
+       "net_2x": 0.0602,
+       "gap_2x": -0.0022,
+       "net_3x": 0.081,
+       "gap_3x": -0.0066,
+       "win": 0.651,
+       "p5": -0.3495
+      },
+      {
+       "label": "unfavorable",
+       "days": 976,
+       "share": 0.146,
+       "windows": 15,
+       "fwd_1x": 0.0341,
+       "net_2x": 0.0493,
+       "gap_2x": -0.0021,
+       "net_3x": 0.0539,
+       "gap_3x": -0.0063,
+       "win": 0.573,
+       "p5": -0.4612
+      },
+      {
+       "label": "very_unfavorable",
+       "days": 1088,
+       "share": 0.162,
+       "windows": 17,
+       "fwd_1x": 0.0569,
+       "net_2x": 0.094,
+       "gap_2x": -0.0062,
+       "net_3x": 0.1172,
+       "gap_3x": -0.0187,
+       "win": 0.634,
+       "p5": -0.3945
+      }
+     ],
+     "vb": {
+      "vol_21": 0.256,
+      "vol_63": 0.1706,
+      "base_vol": 0.2175,
+      "vr21": 0.6929,
+      "vr63": 0.6773,
+      "eff_vol": 0.1811,
+      "eff_vol_med": 0.122,
+      "lev_med": 0.674,
+      "vr21_prev": 0.7068,
+      "eff_vol_prev": 0.0869,
+      "base_vol_prev": 0.1034,
+      "lev_med_prev": 1.4037,
+      "lev": {
+       "15": 0.8284,
+       "30": 1.6568,
+       "45": 2.4853
+      },
+      "lev_prev": {
+       "15": 1.7263,
+       "30": 3.4527,
+       "45": 5.179
+      },
+      "vr_from": "1996-12-30"
+     },
+     "backtest_from": "1999-12-31"
+    },
+    "EFA": {
+     "name": "Developed ex-US",
+     "index": "MSCI EAFE",
+     "breadth_kind": "country ETFs",
+     "etf_start": "2001-08-27",
+     "asof": "2026-11-20",
+     "rank_start": "1998-01-01",
+     "proxy": "67% VEURX + 33% VPACX",
+     "proxy_kind": "blend",
+     "stale": true,
+     "cal": {
+      "kind": "trading",
+      "dpy": 252,
+      "month": 21,
+      "vol": [
+       21,
+       63
+      ],
+      "mom": [
+       63,
+       252
+      ],
+      "vr_q": 21,
+      "vr_q_long": 63,
+      "vr_window": 504,
+      "vr_se": 0.227,
+      "vr_se_long": 0.403,
+      "min_rank": 504,
+      "horizon": 63,
+      "year": 252
+     },
+     "blend_weight": 0.67,
+     "scale": null,
+     "blend_corr": 0.989,
+     "stale_ac_backfill": 0.075,
+     "stale_ac_etf": -0.101,
+     "score": 33.4,
+     "label": "unfavorable",
+     "score_prev": 84.0,
+     "dd": -0.1164,
+     "score_from": "2005-08-31",
+     "b12w": 0.8901,
+     "b3w": 0.0,
+     "b_members": 20,
+     "b_total": 20,
+     "und_1y": 0.0747,
+     "cells": {
+      "eff_vol": {
+       "value": 0.1584,
+       "pct": 66.6,
+       "fav": 33.4,
+       "prev": 0.0973,
+       "q": [
+        0.0499,
+        0.1077,
+        0.1361,
+        0.1754,
+        0.5969
+       ],
+       "n": 5843,
+       "since": "2003-09-03"
+      },
+      "base_vol": {
+       "value": 0.1945,
+       "pct": 72.1,
+       "fav": 27.9,
+       "prev": 0.1161,
+       "q": [
+        0.0678,
+        0.1239,
+        0.1532,
+        0.2001,
+        0.6096
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vol_21": {
+       "value": 0.2238,
+       "pct": 81.5,
+       "fav": 18.5,
+       "prev": 0.1094,
+       "q": [
+        0.0598,
+        0.1162,
+        0.1474,
+        0.1969,
+        0.6503
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vol_63": {
+       "value": 0.1597,
+       "pct": 53.2,
+       "fav": 46.8,
+       "prev": 0.1225,
+       "q": [
+        0.0704,
+        0.1249,
+        0.1552,
+        0.2068,
+        0.5868
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vr21": {
+       "value": 0.664,
+       "pct": 22.1,
+       "fav": null,
+       "prev": 0.7016,
+       "q": [
+        0.4889,
+        0.6802,
+        0.7619,
+        0.8777,
+        1.1703
+       ],
+       "n": 5843,
+       "since": "2003-09-03"
+      },
+      "vr63": {
+       "value": 0.322,
+       "pct": 2.8,
+       "fav": null,
+       "prev": 0.2822,
+       "q": [
+        0.2946,
+        0.5621,
+        0.6725,
+        0.9215,
+        1.2677
+       ],
+       "n": 5843,
+       "since": "2003-09-03"
+      },
+      "mom_3m": {
+       "value": -0.1101,
+       "pct": 7.1,
+       "fav": 7.1,
+       "prev": -0.0025,
+       "q": [
+        -0.2267,
+        -0.0299,
+        0.027,
+        0.0723,
+        0.228
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "mom_12m": {
+       "value": 0.0747,
+       "pct": 44.0,
+       "fav": 44.0,
+       "prev": 0.1278,
+       "q": [
+        -0.4469,
+        -0.0473,
+        0.107,
+        0.2049,
+        0.5225
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "b3": {
+       "value": 0.0,
+       "pct": 5.2,
+       "fav": 5.2,
+       "prev": 0.45,
+       "q": [
+        0.0,
+        0.25,
+        0.7143,
+        0.9456,
+        1.0
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "b12": {
+       "value": 0.95,
+       "pct": 67.0,
+       "fav": 67.0,
+       "prev": 0.95,
+       "q": [
+        0.0,
+        0.2857,
+        0.8,
+        1.0,
+        1.0
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      }
+     },
+     "lev": {
+      "2": {
+       "naive": 0.1494,
+       "gross": 0.1229,
+       "gap": -0.0265,
+       "net": 0.0664,
+       "drag": 0.0501
+      },
+      "3": {
+       "naive": 0.2241,
+       "gross": 0.1407,
+       "gap": -0.0834,
+       "net": 0.0385,
+       "drag": 0.1503
+      }
+     },
+     "backtest": [
+      {
+       "label": "very_favorable",
+       "days": 1012,
+       "share": 0.192,
+       "windows": 16,
+       "fwd_1x": 0.0305,
+       "net_2x": 0.051,
+       "gap_2x": -0.0012,
+       "net_3x": 0.0675,
+       "gap_3x": -0.0036,
+       "win": 0.634,
+       "p5": -0.3053
+      },
+      {
+       "label": "favorable",
+       "days": 955,
+       "share": 0.181,
+       "windows": 15,
+       "fwd_1x": 0.0249,
+       "net_2x": 0.0352,
+       "gap_2x": -0.0027,
+       "net_3x": 0.0451,
+       "gap_3x": -0.0081,
+       "win": 0.593,
+       "p5": -0.2517
+      },
+      {
+       "label": "neutral",
+       "days": 1199,
+       "share": 0.227,
+       "windows": 19,
+       "fwd_1x": 0.0192,
+       "net_2x": 0.0264,
+       "gap_2x": -0.0031,
+       "net_3x": 0.0282,
+       "gap_3x": -0.0095,
+       "win": 0.571,
+       "p5": -0.3329
+      },
+      {
+       "label": "unfavorable",
+       "days": 962,
+       "share": 0.182,
+       "windows": 15,
+       "fwd_1x": 0.0239,
+       "net_2x": 0.0306,
+       "gap_2x": -0.0035,
+       "net_3x": 0.0324,
+       "gap_3x": -0.011,
+       "win": 0.562,
+       "p5": -0.5068
+      },
+      {
+       "label": "very_unfavorable",
+       "days": 1149,
+       "share": 0.218,
+       "windows": 18,
+       "fwd_1x": 0.0576,
+       "net_2x": 0.0957,
+       "gap_2x": -0.0032,
+       "net_3x": 0.1313,
+       "gap_3x": -0.0101,
+       "win": 0.661,
+       "p5": -0.4613
+      }
+     ],
+     "vb": {
+      "vol_21": 0.2238,
+      "vol_63": 0.1597,
+      "base_vol": 0.1945,
+      "vr21": 0.664,
+      "vr63": 0.322,
+      "eff_vol": 0.1584,
+      "eff_vol_med": 0.1361,
+      "lev_med": 0.859,
+      "vr21_prev": 0.7016,
+      "eff_vol_prev": 0.0973,
+      "base_vol_prev": 0.1161,
+      "lev_med_prev": 1.3995,
+      "lev": {
+       "15": 0.9467,
+       "30": 1.8934,
+       "45": 2.84
+      },
+      "lev_prev": {
+       "15": 1.5423,
+       "30": 3.0846,
+       "45": 4.6269
+      },
+      "vr_from": "2003-09-03"
+     },
+     "backtest_from": "2005-08-31"
+    },
+    "EEM": {
+     "name": "Emerging markets",
+     "index": "MSCI Emerging Markets",
+     "breadth_kind": "country ETFs",
+     "etf_start": "2003-04-14",
+     "asof": "2026-11-20",
+     "rank_start": "1998-01-01",
+     "proxy": "VEIEX",
+     "proxy_kind": "single",
+     "stale": true,
+     "cal": {
+      "kind": "trading",
+      "dpy": 252,
+      "month": 21,
+      "vol": [
+       21,
+       63
+      ],
+      "mom": [
+       63,
+       252
+      ],
+      "vr_q": 21,
+      "vr_q_long": 63,
+      "vr_window": 504,
+      "vr_se": 0.227,
+      "vr_se_long": 0.403,
+      "min_rank": 504,
+      "horizon": 63,
+      "year": 252
+     },
+     "blend_weight": null,
+     "scale": null,
+     "blend_corr": null,
+     "stale_ac_backfill": 0.196,
+     "stale_ac_etf": -0.111,
+     "score": 14.8,
+     "label": "very_unfavorable",
+     "score_prev": 53.0,
+     "dd": -0.2439,
+     "score_from": "2007-04-16",
+     "b12w": 0.3764,
+     "b3w": 0.1937,
+     "b_members": 20,
+     "b_total": 20,
+     "und_1y": 0.0194,
+     "cells": {
+      "eff_vol": {
+       "value": 0.2658,
+       "pct": 85.2,
+       "fav": 14.8,
+       "prev": 0.1691,
+       "q": [
+        0.092,
+        0.1415,
+        0.1729,
+        0.2255,
+        0.7118
+       ],
+       "n": 5437,
+       "since": "2005-04-14"
+      },
+      "base_vol": {
+       "value": 0.3177,
+       "pct": 87.7,
+       "fav": 12.3,
+       "prev": 0.208,
+       "q": [
+        0.1085,
+        0.1605,
+        0.1939,
+        0.2489,
+        0.8173
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vol_21": {
+       "value": 0.3613,
+       "pct": 90.6,
+       "fav": 9.4,
+       "prev": 0.1914,
+       "q": [
+        0.091,
+        0.1481,
+        0.1869,
+        0.2468,
+        0.8285
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vol_63": {
+       "value": 0.267,
+       "pct": 78.8,
+       "fav": 21.2,
+       "prev": 0.2234,
+       "q": [
+        0.1122,
+        0.1607,
+        0.1962,
+        0.2506,
+        0.8694
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vr21": {
+       "value": 0.7004,
+       "pct": 35.5,
+       "fav": null,
+       "prev": 0.6606,
+       "q": [
+        0.491,
+        0.6636,
+        0.7539,
+        0.8612,
+        1.0377
+       ],
+       "n": 5437,
+       "since": "2005-04-14"
+      },
+      "vr63": {
+       "value": 0.4277,
+       "pct": 12.1,
+       "fav": null,
+       "prev": 0.3653,
+       "q": [
+        0.3491,
+        0.5317,
+        0.692,
+        0.869,
+        1.1054
+       ],
+       "n": 5437,
+       "since": "2005-04-14"
+      },
+      "mom_3m": {
+       "value": -0.1856,
+       "pct": 3.9,
+       "fav": 3.9,
+       "prev": -0.0254,
+       "q": [
+        -0.2812,
+        -0.0494,
+        0.0314,
+        0.0975,
+        0.2983
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "mom_12m": {
+       "value": 0.0194,
+       "pct": 39.3,
+       "fav": 39.3,
+       "prev": 0.1587,
+       "q": [
+        -0.4921,
+        -0.0899,
+        0.0889,
+        0.2487,
+        0.7902
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "b3": {
+       "value": 0.15,
+       "pct": 14.6,
+       "fav": 14.6,
+       "prev": 0.3,
+       "q": [
+        0.0,
+        0.3125,
+        0.6316,
+        0.875,
+        1.0
+       ],
+       "n": 6566,
+       "since": "2000-10-12"
+      },
+      "b12": {
+       "value": 0.4,
+       "pct": 27.7,
+       "fav": 27.7,
+       "prev": 0.6,
+       "q": [
+        0.0,
+        0.3684,
+        0.6875,
+        0.9474,
+        1.0
+       ],
+       "n": 6377,
+       "since": "2001-07-16"
+      }
+     },
+     "lev": {
+      "2": {
+       "naive": 0.0388,
+       "gross": -0.0362,
+       "gap": -0.075,
+       "net": -0.0848,
+       "drag": 0.1305
+      },
+      "3": {
+       "naive": 0.0582,
+       "gross": -0.1567,
+       "gap": -0.2149,
+       "net": -0.2324,
+       "drag": 0.3916
+      }
+     },
+     "backtest": [
+      {
+       "label": "very_favorable",
+       "days": 1668,
+       "share": 0.342,
+       "windows": 26,
+       "fwd_1x": 0.0216,
+       "net_2x": 0.0246,
+       "gap_2x": -0.0038,
+       "net_3x": 0.0195,
+       "gap_3x": -0.0109,
+       "win": 0.531,
+       "p5": -0.4553
+      },
+      {
+       "label": "favorable",
+       "days": 1207,
+       "share": 0.248,
+       "windows": 19,
+       "fwd_1x": 0.0069,
+       "net_2x": -0.0032,
+       "gap_2x": -0.0051,
+       "net_3x": -0.0214,
+       "gap_3x": -0.0153,
+       "win": 0.462,
+       "p5": -0.4236
+      },
+      {
+       "label": "neutral",
+       "days": 792,
+       "share": 0.163,
+       "windows": 12,
+       "fwd_1x": 0.0338,
+       "net_2x": 0.0473,
+       "gap_2x": -0.0026,
+       "net_3x": 0.054,
+       "gap_3x": -0.0083,
+       "win": 0.552,
+       "p5": -0.5498
+      },
+      {
+       "label": "unfavorable",
+       "days": 584,
+       "share": 0.12,
+       "windows": 9,
+       "fwd_1x": 0.04,
+       "net_2x": 0.0633,
+       "gap_2x": -0.0057,
+       "net_3x": 0.0736,
+       "gap_3x": -0.0175,
+       "win": 0.616,
+       "p5": -0.4089
+      },
+      {
+       "label": "very_unfavorable",
+       "days": 620,
+       "share": 0.127,
+       "windows": 9,
+       "fwd_1x": 0.0585,
+       "net_2x": 0.0739,
+       "gap_2x": -0.0157,
+       "net_3x": 0.0475,
+       "gap_3x": -0.0479,
+       "win": 0.537,
+       "p5": -0.5311
+      }
+     ],
+     "vb": {
+      "vol_21": 0.3613,
+      "vol_63": 0.267,
+      "base_vol": 0.3177,
+      "vr21": 0.7004,
+      "vr63": 0.4277,
+      "eff_vol": 0.2658,
+      "eff_vol_med": 0.1729,
+      "lev_med": 0.6505,
+      "vr21_prev": 0.6606,
+      "eff_vol_prev": 0.1691,
+      "base_vol_prev": 0.208,
+      "lev_med_prev": 1.0227,
+      "lev": {
+       "15": 0.5642,
+       "30": 1.1285,
+       "45": 1.6927
+      },
+      "lev_prev": {
+       "15": 0.8872,
+       "30": 1.7745,
+       "45": 2.6617
+      },
+      "vr_from": "2005-04-14"
+     },
+     "backtest_from": "2007-04-16"
+    }
+   },
+   "order": [
+    "SPY",
+    "EFA",
+    "EEM"
+   ],
+   "metrics": [
+    {
+     "key": "eff_vol",
+     "label": "Effective volatility",
+     "fmt": "pct",
+     "higher_better": false,
+     "core": true
     },
     {
-     "label": "very_unfavorable",
-     "days": 1149,
-     "share": 0.218,
-     "windows": 18,
-     "fwd_1x": 0.0576,
-     "net_2x": 0.0957,
-     "gap_2x": -0.0032,
-     "net_3x": 0.1313,
-     "gap_3x": -0.0101,
-     "win": 0.661,
-     "p5": -0.4613
+     "key": "base_vol",
+     "label": "Volatility, blended 1- and 3-month",
+     "fmt": "pct",
+     "higher_better": false,
+     "core": true
+    },
+    {
+     "key": "vol_21",
+     "label": "Volatility, 1-month",
+     "fmt": "pct",
+     "higher_better": false,
+     "core": true
+    },
+    {
+     "key": "vol_63",
+     "label": "Volatility, 3-month",
+     "fmt": "pct",
+     "higher_better": false,
+     "core": true
+    },
+    {
+     "key": "vr21",
+     "label": "Variance ratio, 1-month (trend persistence)",
+     "fmt": "num",
+     "higher_better": null,
+     "core": true
+    },
+    {
+     "key": "vr63",
+     "label": "Variance ratio, 3-month (context only)",
+     "fmt": "num",
+     "higher_better": null,
+     "core": false
+    },
+    {
+     "key": "mom_3m",
+     "label": "3-month momentum",
+     "fmt": "pct",
+     "higher_better": true,
+     "core": false
+    },
+    {
+     "key": "mom_12m",
+     "label": "12-month momentum",
+     "fmt": "pct",
+     "higher_better": true,
+     "core": false
+    },
+    {
+     "key": "b3",
+     "label": "Breadth: components up over 3 months",
+     "fmt": "pct",
+     "higher_better": true,
+     "core": false
+    },
+    {
+     "key": "b12",
+     "label": "Breadth: components up over 12 months",
+     "fmt": "pct",
+     "higher_better": true,
+     "core": false
     }
    ],
-   "vb": {
-    "vol_21": 0.2238,
-    "vol_63": 0.1597,
-    "base_vol": 0.1945,
-    "vr21": 0.664,
-    "eff_vol": 0.1584,
-    "vr21_prev": 0.7016,
-    "eff_vol_prev": 0.0973,
-    "base_vol_prev": 0.1161,
-    "lev": {
-     "15": 0.9467,
-     "30": 1.8934,
-     "45": 2.84
-    },
-    "lev_prev": {
-     "15": 1.5423,
-     "30": 3.0846,
-     "45": 4.6269
-    },
-    "vr_from": "2003-09-03"
-   },
-   "backtest_from": "2005-08-31"
-  },
-  "EEM": {
-   "name": "Emerging markets",
-   "index": "MSCI Emerging Markets",
-   "breadth_kind": "country ETFs",
-   "etf_start": "2003-04-14",
-   "proxy": "VEIEX",
-   "blend_weight": null,
-   "blend_corr": null,
-   "stale_ac_backfill": 0.196,
-   "stale_ac_etf": -0.111,
-   "score": 14.8,
-   "label": "very_unfavorable",
-   "score_prev": 53.0,
-   "dd": -0.2439,
-   "score_from": "2007-04-16",
-   "b12w": 0.3764,
-   "b3w": 0.1937,
-   "b_members": 20,
-   "b_total": 20,
-   "und_1y": 0.0194,
-   "cells": {
-    "eff_vol": {
-     "value": 0.2658,
-     "pct": 85.2,
-     "fav": 14.8,
-     "prev": 0.1691,
-     "q": [
-      0.092,
-      0.1415,
-      0.1729,
-      0.2255,
-      0.7118
-     ],
-     "n": 5437,
-     "since": "2005-04-14"
-    },
-    "base_vol": {
-     "value": 0.3177,
-     "pct": 87.7,
-     "fav": 12.3,
-     "prev": 0.208,
-     "q": [
-      0.1085,
-      0.1605,
-      0.1939,
-      0.2489,
-      0.8173
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "vol_21": {
-     "value": 0.3613,
-     "pct": 90.6,
-     "fav": 9.4,
-     "prev": 0.1914,
-     "q": [
-      0.091,
-      0.1481,
-      0.1869,
-      0.2468,
-      0.8285
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "vol_63": {
-     "value": 0.267,
-     "pct": 78.8,
-     "fav": 21.2,
-     "prev": 0.2234,
-     "q": [
-      0.1122,
-      0.1607,
-      0.1962,
-      0.2506,
-      0.8694
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "vr21": {
-     "value": 0.7004,
-     "pct": 35.5,
-     "fav": null,
-     "prev": 0.6606,
-     "q": [
-      0.491,
-      0.6636,
-      0.7539,
-      0.8612,
-      1.0377
-     ],
-     "n": 5437,
-     "since": "2005-04-14"
-    },
-    "mom_3m": {
-     "value": -0.1856,
-     "pct": 3.9,
-     "fav": 3.9,
-     "prev": -0.0254,
-     "q": [
-      -0.2812,
-      -0.0494,
-      0.0314,
-      0.0975,
-      0.2983
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "mom_12m": {
-     "value": 0.0194,
-     "pct": 39.3,
-     "fav": 39.3,
-     "prev": 0.1587,
-     "q": [
-      -0.4921,
-      -0.0899,
-      0.0889,
-      0.2487,
-      0.7902
-     ],
-     "n": 7267,
-     "since": "1998-01-02"
-    },
-    "b3": {
-     "value": 0.15,
-     "pct": 14.6,
-     "fav": 14.6,
-     "prev": 0.3,
-     "q": [
-      0.0,
-      0.3125,
-      0.6316,
-      0.875,
-      1.0
-     ],
-     "n": 6566,
-     "since": "2000-10-12"
-    },
-    "b12": {
-     "value": 0.4,
-     "pct": 27.7,
-     "fav": 27.7,
-     "prev": 0.6,
-     "q": [
-      0.0,
-      0.3684,
-      0.6875,
-      0.9474,
-      1.0
-     ],
-     "n": 6377,
-     "since": "2001-07-16"
+   "config": {
+    "mom": [
+     63,
+     252
+    ],
+    "vol": [
+     21,
+     63
+    ],
+    "vr_q": 21,
+    "vr_q_long": 63,
+    "vr_window": 504,
+    "vr_se": 0.227,
+    "vr_se_long": 0.403,
+    "budgets": [
+     15,
+     30,
+     45
+    ],
+    "caps": [
+     2.0,
+     2.5,
+     3.0
+    ],
+    "min_rank": 504,
+    "history_start": "1998-01-01",
+    "leverage": [
+     2,
+     3
+    ],
+    "spread": 0.005,
+    "fee": 0.0095,
+    "cuts": [
+     20.0,
+     40.0,
+     60.0,
+     80.0
+    ],
+    "ref_lines": [
+     20,
+     50,
+     80
+    ],
+    "levels": [
+     {
+      "key": "very_favorable",
+      "name": "Very favorable"
+     },
+     {
+      "key": "favorable",
+      "name": "Favorable"
+     },
+     {
+      "key": "neutral",
+      "name": "Neutral"
+     },
+     {
+      "key": "unfavorable",
+      "name": "Unfavorable"
+     },
+     {
+      "key": "very_unfavorable",
+      "name": "Very unfavorable"
+     }
+    ],
+    "horizon": 63,
+    "breadth_min": 5,
+    "breadth": {
+     "SPY": {
+      "XLK": 33,
+      "XLF": 13.5,
+      "XLY": 10.5,
+      "XLC": 10,
+      "XLV": 9.5,
+      "XLI": 8.5,
+      "XLP": 5.5,
+      "XLE": 3,
+      "XLU": 2.5,
+      "XLRE": 2,
+      "XLB": 2
+     },
+     "EFA": {
+      "EWJ": 22,
+      "EWU": 15,
+      "EWQ": 11,
+      "EWG": 10,
+      "EWL": 9.5,
+      "EWA": 7,
+      "EWN": 5,
+      "EWD": 3.5,
+      "EWP": 3.5,
+      "EWI": 3,
+      "EDEN": 2.5,
+      "EWH": 2,
+      "EWS": 1.7,
+      "EFNL": 1,
+      "EWK": 1,
+      "EIS": 1,
+      "ENOR": 0.7,
+      "EIRL": 0.3,
+      "EWO": 0.2,
+      "ENZL": 0.2
+     },
+     "EEM": {
+      "FXI": 28,
+      "EWT": 19,
+      "INDA": 17,
+      "EWY": 12,
+      "EWZ": 4.5,
+      "KSA": 3.5,
+      "EZA": 3.5,
+      "EWW": 2,
+      "UAE": 1.5,
+      "EWM": 1.3,
+      "EIDO": 1.2,
+      "EPOL": 1,
+      "THD": 1,
+      "KWT": 0.7,
+      "QAT": 0.7,
+      "TUR": 0.5,
+      "GREK": 0.5,
+      "ECH": 0.5,
+      "EPHE": 0.4,
+      "EPU": 0.3
+     }
     }
-   },
-   "lev": {
-    "2": {
-     "naive": 0.0388,
-     "gross": -0.0362,
-     "gap": -0.075,
-     "net": -0.0848,
-     "drag": 0.1305
-    },
-    "3": {
-     "naive": 0.0582,
-     "gross": -0.1567,
-     "gap": -0.2149,
-     "net": -0.2324,
-     "drag": 0.3916
-    }
-   },
-   "backtest": [
-    {
-     "label": "very_favorable",
-     "days": 1668,
-     "share": 0.342,
-     "windows": 26,
-     "fwd_1x": 0.0216,
-     "net_2x": 0.0246,
-     "gap_2x": -0.0038,
-     "net_3x": 0.0195,
-     "gap_3x": -0.0109,
-     "win": 0.531,
-     "p5": -0.4553
-    },
-    {
-     "label": "favorable",
-     "days": 1207,
-     "share": 0.248,
-     "windows": 19,
-     "fwd_1x": 0.0069,
-     "net_2x": -0.0032,
-     "gap_2x": -0.0051,
-     "net_3x": -0.0214,
-     "gap_3x": -0.0153,
-     "win": 0.462,
-     "p5": -0.4236
-    },
-    {
-     "label": "neutral",
-     "days": 792,
-     "share": 0.163,
-     "windows": 12,
-     "fwd_1x": 0.0338,
-     "net_2x": 0.0473,
-     "gap_2x": -0.0026,
-     "net_3x": 0.054,
-     "gap_3x": -0.0083,
-     "win": 0.552,
-     "p5": -0.5498
-    },
-    {
-     "label": "unfavorable",
-     "days": 584,
-     "share": 0.12,
-     "windows": 9,
-     "fwd_1x": 0.04,
-     "net_2x": 0.0633,
-     "gap_2x": -0.0057,
-     "net_3x": 0.0736,
-     "gap_3x": -0.0175,
-     "win": 0.616,
-     "p5": -0.4089
-    },
-    {
-     "label": "very_unfavorable",
-     "days": 620,
-     "share": 0.127,
-     "windows": 9,
-     "fwd_1x": 0.0585,
-     "net_2x": 0.0739,
-     "gap_2x": -0.0157,
-     "net_3x": 0.0475,
-     "gap_3x": -0.0479,
-     "win": 0.537,
-     "p5": -0.5311
-    }
-   ],
-   "vb": {
-    "vol_21": 0.3613,
-    "vol_63": 0.267,
-    "base_vol": 0.3177,
-    "vr21": 0.7004,
-    "eff_vol": 0.2658,
-    "vr21_prev": 0.6606,
-    "eff_vol_prev": 0.1691,
-    "base_vol_prev": 0.208,
-    "lev": {
-     "15": 0.5642,
-     "30": 1.1285,
-     "45": 1.6927
-    },
-    "lev_prev": {
-     "15": 0.8872,
-     "30": 1.7745,
-     "45": 2.6617
-    },
-    "vr_from": "2005-04-14"
-   },
-   "backtest_from": "2007-04-16"
-  }
- },
- "order": [
-  "SPY",
-  "EFA",
-  "EEM"
- ],
- "metrics": [
-  {
-   "key": "eff_vol",
-   "label": "Effective volatility",
-   "fmt": "pct",
-   "higher_better": false,
-   "core": true
-  },
-  {
-   "key": "base_vol",
-   "label": "Volatility, blended 21- and 63-day",
-   "fmt": "pct",
-   "higher_better": false,
-   "core": true
-  },
-  {
-   "key": "vol_21",
-   "label": "Volatility, 21-day",
-   "fmt": "pct",
-   "higher_better": false,
-   "core": true
-  },
-  {
-   "key": "vol_63",
-   "label": "Volatility, 63-day",
-   "fmt": "pct",
-   "higher_better": false,
-   "core": true
-  },
-  {
-   "key": "vr21",
-   "label": "Variance ratio, 21-day (trend persistence)",
-   "fmt": "num",
-   "higher_better": null,
-   "core": true
-  },
-  {
-   "key": "mom_3m",
-   "label": "3-month momentum",
-   "fmt": "pct",
-   "higher_better": true,
-   "core": false
-  },
-  {
-   "key": "mom_12m",
-   "label": "12-month momentum",
-   "fmt": "pct",
-   "higher_better": true,
-   "core": false
-  },
-  {
-   "key": "b3",
-   "label": "Breadth: components up over 3 months",
-   "fmt": "pct",
-   "higher_better": true,
-   "core": false
-  },
-  {
-   "key": "b12",
-   "label": "Breadth: components up over 12 months",
-   "fmt": "pct",
-   "higher_better": true,
-   "core": false
-  }
- ],
- "config": {
-  "mom": [
-   63,
-   252
-  ],
-  "vol": [
-   21,
-   63
-  ],
-  "vr_q": 21,
-  "vr_window": 504,
-  "vr_se": 0.227,
-  "budgets": [
-   15,
-   30,
-   45
-  ],
-  "caps": [
-   2.0,
-   2.5,
-   3.0
-  ],
-  "min_rank": 504,
-  "leverage": [
-   2,
-   3
-  ],
-  "spread": 0.005,
-  "fee": 0.0095,
-  "cuts": [
-   20.0,
-   40.0,
-   60.0,
-   80.0
-  ],
-  "ref_lines": [
-   20,
-   50,
-   80
-  ],
-  "levels": [
-   {
-    "key": "very_favorable",
-    "name": "Very favorable"
-   },
-   {
-    "key": "favorable",
-    "name": "Favorable"
-   },
-   {
-    "key": "neutral",
-    "name": "Neutral"
-   },
-   {
-    "key": "unfavorable",
-    "name": "Unfavorable"
-   },
-   {
-    "key": "very_unfavorable",
-    "name": "Very unfavorable"
    }
-  ],
-  "horizon": 63,
-  "breadth_min": 5,
-  "breadth": {
-   "SPY": {
-    "XLK": 33,
-    "XLF": 13.5,
-    "XLY": 10.5,
-    "XLC": 10,
-    "XLV": 9.5,
-    "XLI": 8.5,
-    "XLP": 5.5,
-    "XLE": 3,
-    "XLU": 2.5,
-    "XLRE": 2,
-    "XLB": 2
+  },
+  "other": {
+   "asof": "2026-11-20",
+   "generated": "2026-11-22 16:04 UTC",
+   "synthetic": false,
+   "group": "other",
+   "title": "Gold, Treasuries and Bitcoin",
+   "pages": [
+    {
+     "key": "equity",
+     "title": "Equities",
+     "page": "index.html",
+     "report": "report.html"
+    },
+    {
+     "key": "other",
+     "title": "Gold, Treasuries and Bitcoin",
+     "page": "other.html",
+     "report": "other-report.html"
+    }
+   ],
+   "cash_now": 0.0412,
+   "cash_note": "13-week T-bill yield (^IRX)",
+   "notes": [],
+   "assets": {
+    "GLD": {
+     "name": "Gold",
+     "index": "Gold bullion (SPDR Gold Shares)",
+     "breadth_kind": null,
+     "etf_start": "2004-11-18",
+     "asof": "2026-11-20",
+     "rank_start": "2005-02-18",
+     "proxy": null,
+     "proxy_kind": null,
+     "stale": false,
+     "cal": {
+      "kind": "trading",
+      "dpy": 252,
+      "month": 21,
+      "vol": [
+       21,
+       63
+      ],
+      "mom": [
+       63,
+       252
+      ],
+      "vr_q": 21,
+      "vr_q_long": 63,
+      "vr_window": 504,
+      "vr_se": 0.227,
+      "vr_se_long": 0.403,
+      "min_rank": 504,
+      "horizon": 63,
+      "year": 252
+     },
+     "blend_weight": null,
+     "scale": null,
+     "blend_corr": null,
+     "stale_ac_backfill": null,
+     "stale_ac_etf": null,
+     "score": 6.8,
+     "label": "very_unfavorable",
+     "score_prev": 17.6,
+     "dd": -0.3489,
+     "score_from": "2008-11-18",
+     "b12w": null,
+     "b3w": null,
+     "b_members": 0,
+     "b_total": 0,
+     "und_1y": -0.1389,
+     "cells": {
+      "eff_vol": {
+       "value": 0.2512,
+       "pct": 93.2,
+       "fav": 6.8,
+       "prev": 0.2054,
+       "q": [
+        0.0831,
+        0.115,
+        0.1424,
+        0.1846,
+        0.4092
+       ],
+       "n": 5033,
+       "since": "2006-11-17"
+      },
+      "base_vol": {
+       "value": 0.2779,
+       "pct": 92.8,
+       "fav": 7.2,
+       "prev": 0.2278,
+       "q": [
+        0.0825,
+        0.1215,
+        0.1522,
+        0.2002,
+        0.4561
+       ],
+       "n": 5474,
+       "since": "2005-02-18"
+      },
+      "vol_21": {
+       "value": 0.3038,
+       "pct": 94.1,
+       "fav": 5.9,
+       "prev": 0.2149,
+       "q": [
+        0.0723,
+        0.1147,
+        0.1474,
+        0.1995,
+        0.4744
+       ],
+       "n": 5474,
+       "since": "2005-02-18"
+      },
+      "vol_63": {
+       "value": 0.2494,
+       "pct": 89.3,
+       "fav": 10.7,
+       "prev": 0.2399,
+       "q": [
+        0.0845,
+        0.1249,
+        0.1557,
+        0.2017,
+        0.4192
+       ],
+       "n": 5474,
+       "since": "2005-02-18"
+      },
+      "vr21": {
+       "value": 0.8169,
+       "pct": 33.6,
+       "fav": null,
+       "prev": 0.8132,
+       "q": [
+        0.6042,
+        0.7848,
+        0.8929,
+        1.0178,
+        1.2994
+       ],
+       "n": 5033,
+       "since": "2006-11-17"
+      },
+      "vr63": {
+       "value": 1.0249,
+       "pct": 84.9,
+       "fav": null,
+       "prev": 0.9638,
+       "q": [
+        0.4212,
+        0.6144,
+        0.7224,
+        0.9519,
+        1.5729
+       ],
+       "n": 5033,
+       "since": "2006-11-17"
+      },
+      "mom_3m": {
+       "value": -0.2433,
+       "pct": 0.0,
+       "fav": 0.0,
+       "prev": -0.0078,
+       "q": [
+        -0.1544,
+        -0.0295,
+        0.0249,
+        0.079,
+        0.2365
+       ],
+       "n": 5474,
+       "since": "2005-02-18"
+      },
+      "mom_12m": {
+       "value": -0.1389,
+       "pct": 4.9,
+       "fav": 4.9,
+       "prev": -0.0218,
+       "q": [
+        -0.26,
+        -0.0233,
+        0.1009,
+        0.2641,
+        0.6646
+       ],
+       "n": 5285,
+       "since": "2005-11-17"
+      }
+     },
+     "lev": {
+      "2": {
+       "naive": -0.2778,
+       "gross": -0.3213,
+       "gap": -0.0435,
+       "net": -0.3556,
+       "drag": 0.0923
+      },
+      "3": {
+       "naive": -0.4168,
+       "gross": -0.5127,
+       "gap": -0.0959,
+       "net": -0.5565,
+       "drag": 0.2769
+      }
+     },
+     "backtest": [
+      {
+       "label": "very_favorable",
+       "days": 1497,
+       "share": 0.335,
+       "windows": 23,
+       "fwd_1x": 0.0265,
+       "net_2x": 0.043,
+       "gap_2x": -0.0014,
+       "net_3x": 0.0553,
+       "gap_3x": -0.0042,
+       "win": 0.58,
+       "p5": -0.2506
+      },
+      {
+       "label": "favorable",
+       "days": 1069,
+       "share": 0.239,
+       "windows": 16,
+       "fwd_1x": 0.0216,
+       "net_2x": 0.0308,
+       "gap_2x": -0.0022,
+       "net_3x": 0.0386,
+       "gap_3x": -0.0067,
+       "win": 0.586,
+       "p5": -0.2605
+      },
+      {
+       "label": "neutral",
+       "days": 777,
+       "share": 0.174,
+       "windows": 12,
+       "fwd_1x": 0.0263,
+       "net_2x": 0.0383,
+       "gap_2x": -0.0021,
+       "net_3x": 0.0454,
+       "gap_3x": -0.0067,
+       "win": 0.568,
+       "p5": -0.2662
+      },
+      {
+       "label": "unfavorable",
+       "days": 673,
+       "share": 0.151,
+       "windows": 10,
+       "fwd_1x": 0.0273,
+       "net_2x": 0.0343,
+       "gap_2x": -0.0033,
+       "net_3x": 0.0343,
+       "gap_3x": -0.0101,
+       "win": 0.562,
+       "p5": -0.2361
+      },
+      {
+       "label": "very_unfavorable",
+       "days": 451,
+       "share": 0.101,
+       "windows": 7,
+       "fwd_1x": 0.0033,
+       "net_2x": -0.0151,
+       "gap_2x": -0.0086,
+       "net_3x": -0.04,
+       "gap_3x": -0.0264,
+       "win": 0.412,
+       "p5": -0.4088
+      }
+     ],
+     "vb": {
+      "vol_21": 0.3038,
+      "vol_63": 0.2494,
+      "base_vol": 0.2779,
+      "vr21": 0.8169,
+      "vr63": 1.0249,
+      "eff_vol": 0.2512,
+      "eff_vol_med": 0.1424,
+      "lev_med": 0.5671,
+      "vr21_prev": 0.8132,
+      "eff_vol_prev": 0.2054,
+      "base_vol_prev": 0.2278,
+      "lev_med_prev": 0.6922,
+      "lev": {
+       "15": 0.5972,
+       "30": 1.1944,
+       "45": 1.7916
+      },
+      "lev_prev": {
+       "15": 0.7303,
+       "30": 1.4607,
+       "45": 2.191
+      },
+      "vr_from": "2006-11-17"
+     },
+     "backtest_from": "2008-11-18"
+    },
+    "IEF": {
+     "name": "Intermediate Treasuries",
+     "index": "US Treasuries, 7-10 years",
+     "breadth_kind": null,
+     "etf_start": "2002-07-30",
+     "asof": "2026-11-20",
+     "rank_start": "1998-01-01",
+     "proxy": "VFITX returns \u00d7 1.32",
+     "proxy_kind": "scaled",
+     "stale": false,
+     "cal": {
+      "kind": "trading",
+      "dpy": 252,
+      "month": 21,
+      "vol": [
+       21,
+       63
+      ],
+      "mom": [
+       63,
+       252
+      ],
+      "vr_q": 21,
+      "vr_q_long": 63,
+      "vr_window": 504,
+      "vr_se": 0.227,
+      "vr_se_long": 0.403,
+      "min_rank": 504,
+      "horizon": 63,
+      "year": 252
+     },
+     "blend_weight": null,
+     "scale": 1.32,
+     "blend_corr": 0.991,
+     "stale_ac_backfill": 0.051,
+     "stale_ac_etf": -0.028,
+     "score": 53.5,
+     "label": "neutral",
+     "score_prev": 69.6,
+     "dd": -0.1207,
+     "score_from": "1999-12-31",
+     "b12w": null,
+     "b3w": null,
+     "b_members": 0,
+     "b_total": 0,
+     "und_1y": -0.0135,
+     "cells": {
+      "eff_vol": {
+       "value": 0.0562,
+       "pct": 46.5,
+       "fav": 53.5,
+       "prev": 0.0491,
+       "q": [
+        0.0306,
+        0.0465,
+        0.058,
+        0.0732,
+        0.1213
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "base_vol": {
+       "value": 0.0656,
+       "pct": 58.2,
+       "fav": 41.8,
+       "prev": 0.0593,
+       "q": [
+        0.0328,
+        0.0491,
+        0.0614,
+        0.077,
+        0.1245
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vol_21": {
+       "value": 0.0675,
+       "pct": 62.7,
+       "fav": 37.3,
+       "prev": 0.0609,
+       "q": [
+        0.0295,
+        0.0477,
+        0.0597,
+        0.0767,
+        0.1353
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vol_63": {
+       "value": 0.0636,
+       "pct": 54.1,
+       "fav": 45.9,
+       "prev": 0.0576,
+       "q": [
+        0.0336,
+        0.0493,
+        0.0619,
+        0.077,
+        0.1211
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vr21": {
+       "value": 0.7333,
+       "pct": 4.9,
+       "fav": null,
+       "prev": 0.6855,
+       "q": [
+        0.6916,
+        0.817,
+        0.8957,
+        0.9882,
+        1.2055
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vr63": {
+       "value": 0.5876,
+       "pct": 8.5,
+       "fav": null,
+       "prev": 0.5899,
+       "q": [
+        0.3877,
+        0.7992,
+        0.8979,
+        1.0162,
+        1.5657
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "mom_3m": {
+       "value": -0.0043,
+       "pct": 31.2,
+       "fav": 31.2,
+       "prev": -0.0094,
+       "q": [
+        -0.0706,
+        -0.0095,
+        0.0102,
+        0.0324,
+        0.0924
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "mom_12m": {
+       "value": -0.0135,
+       "pct": 22.1,
+       "fav": 22.1,
+       "prev": -0.0292,
+       "q": [
+        -0.1361,
+        -0.0057,
+        0.0529,
+        0.0987,
+        0.2086
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      }
+     },
+     "lev": {
+      "2": {
+       "naive": -0.0269,
+       "gross": -0.0293,
+       "gap": -0.0024,
+       "net": -0.0782,
+       "drag": 0.0046
+      },
+      "3": {
+       "naive": -0.0404,
+       "gross": -0.0475,
+       "gap": -0.0072,
+       "net": -0.1328,
+       "drag": 0.0137
+      }
+     },
+     "backtest": [
+      {
+       "label": "very_favorable",
+       "days": 1937,
+       "share": 0.32,
+       "windows": 30,
+       "fwd_1x": 0.0036,
+       "net_2x": -0.0036,
+       "gap_2x": -0.0002,
+       "net_3x": -0.0095,
+       "gap_3x": -0.0007,
+       "win": 0.455,
+       "p5": -0.133
+      },
+      {
+       "label": "favorable",
+       "days": 1164,
+       "share": 0.192,
+       "windows": 18,
+       "fwd_1x": 0.0084,
+       "net_2x": 0.0096,
+       "gap_2x": -0.0002,
+       "net_3x": 0.0128,
+       "gap_3x": -0.0007,
+       "win": 0.566,
+       "p5": -0.1432
+      },
+      {
+       "label": "neutral",
+       "days": 871,
+       "share": 0.144,
+       "windows": 13,
+       "fwd_1x": 0.017,
+       "net_2x": 0.0225,
+       "gap_2x": -0.0003,
+       "net_3x": 0.0327,
+       "gap_3x": -0.001,
+       "win": 0.659,
+       "p5": -0.1605
+      },
+      {
+       "label": "unfavorable",
+       "days": 823,
+       "share": 0.136,
+       "windows": 13,
+       "fwd_1x": 0.0144,
+       "net_2x": 0.0207,
+       "gap_2x": -0.0004,
+       "net_3x": 0.0277,
+       "gap_3x": -0.0012,
+       "win": 0.598,
+       "p5": -0.1478
+      },
+      {
+       "label": "very_unfavorable",
+       "days": 1260,
+       "share": 0.208,
+       "windows": 20,
+       "fwd_1x": 0.0074,
+       "net_2x": 0.007,
+       "gap_2x": -0.001,
+       "net_3x": 0.0062,
+       "gap_3x": -0.0029,
+       "win": 0.525,
+       "p5": -0.1754
+      }
+     ],
+     "vb": {
+      "vol_21": 0.0675,
+      "vol_63": 0.0636,
+      "base_vol": 0.0656,
+      "vr21": 0.7333,
+      "vr63": 0.5876,
+      "eff_vol": 0.0562,
+      "eff_vol_med": 0.058,
+      "lev_med": 1.0324,
+      "vr21_prev": 0.6855,
+      "eff_vol_prev": 0.0491,
+      "base_vol_prev": 0.0593,
+      "lev_med_prev": 1.1838,
+      "lev": {
+       "15": 2.6709,
+       "30": 5.3418,
+       "45": 8.0127
+      },
+      "lev_prev": {
+       "15": 3.0568,
+       "30": 6.1137,
+       "45": 9.1705
+      },
+      "vr_from": "1996-12-30"
+     },
+     "backtest_from": "2002-07-31"
+    },
+    "TLT": {
+     "name": "Long-term Treasuries",
+     "index": "US Treasuries, 20+ years",
+     "breadth_kind": null,
+     "etf_start": "2002-07-30",
+     "asof": "2026-11-20",
+     "rank_start": "1998-01-01",
+     "proxy": "VUSTX returns \u00d7 1.17",
+     "proxy_kind": "scaled",
+     "stale": false,
+     "cal": {
+      "kind": "trading",
+      "dpy": 252,
+      "month": 21,
+      "vol": [
+       21,
+       63
+      ],
+      "mom": [
+       63,
+       252
+      ],
+      "vr_q": 21,
+      "vr_q_long": 63,
+      "vr_window": 504,
+      "vr_se": 0.227,
+      "vr_se_long": 0.403,
+      "min_rank": 504,
+      "horizon": 63,
+      "year": 252
+     },
+     "blend_weight": null,
+     "scale": 1.17,
+     "blend_corr": 0.996,
+     "stale_ac_backfill": 0.033,
+     "stale_ac_etf": -0.028,
+     "score": 68.2,
+     "label": "favorable",
+     "score_prev": 69.8,
+     "dd": -0.42,
+     "score_from": "1999-12-31",
+     "b12w": null,
+     "b3w": null,
+     "b_members": 0,
+     "b_total": 0,
+     "und_1y": -0.0405,
+     "cells": {
+      "eff_vol": {
+       "value": 0.0932,
+       "pct": 31.8,
+       "fav": 68.2,
+       "prev": 0.0923,
+       "q": [
+        0.0612,
+        0.0893,
+        0.1072,
+        0.139,
+        0.263
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "base_vol": {
+       "value": 0.1102,
+       "pct": 43.1,
+       "fav": 56.9,
+       "prev": 0.1166,
+       "q": [
+        0.0641,
+        0.0974,
+        0.1166,
+        0.1501,
+        0.2888
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vol_21": {
+       "value": 0.1107,
+       "pct": 45.2,
+       "fav": 54.8,
+       "prev": 0.1203,
+       "q": [
+        0.0591,
+        0.0943,
+        0.1146,
+        0.1501,
+        0.2878
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vol_63": {
+       "value": 0.1098,
+       "pct": 42.8,
+       "fav": 57.2,
+       "prev": 0.1128,
+       "q": [
+        0.0669,
+        0.0978,
+        0.1173,
+        0.1501,
+        0.2918
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vr21": {
+       "value": 0.7148,
+       "pct": 20.6,
+       "fav": null,
+       "prev": 0.6265,
+       "q": [
+        0.6125,
+        0.7335,
+        0.859,
+        0.9681,
+        1.2863
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "vr63": {
+       "value": 0.3987,
+       "pct": 0.2,
+       "fav": null,
+       "prev": 0.3905,
+       "q": [
+        0.4581,
+        0.699,
+        0.8389,
+        0.9856,
+        1.2673
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "mom_3m": {
+       "value": -0.0015,
+       "pct": 39.3,
+       "fav": 39.3,
+       "prev": -0.0064,
+       "q": [
+        -0.1426,
+        -0.0264,
+        0.0133,
+        0.0522,
+        0.1914
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      },
+      "mom_12m": {
+       "value": -0.0405,
+       "pct": 23.0,
+       "fav": 23.0,
+       "prev": -0.0703,
+       "q": [
+        -0.2666,
+        -0.0305,
+        0.0551,
+        0.1329,
+        0.3635
+       ],
+       "n": 7267,
+       "since": "1998-01-02"
+      }
+     },
+     "lev": {
+      "2": {
+       "naive": -0.081,
+       "gross": -0.0882,
+       "gap": -0.0071,
+       "net": -0.1341,
+       "drag": 0.0122
+      },
+      "3": {
+       "naive": -0.1216,
+       "gross": -0.1417,
+       "gap": -0.0202,
+       "net": -0.2186,
+       "drag": 0.0367
+      }
+     },
+     "backtest": [
+      {
+       "label": "very_favorable",
+       "days": 836,
+       "share": 0.138,
+       "windows": 13,
+       "fwd_1x": 0.0041,
+       "net_2x": -0.0045,
+       "gap_2x": -0.001,
+       "net_3x": -0.0135,
+       "gap_3x": -0.0031,
+       "win": 0.445,
+       "p5": -0.2044
+      },
+      {
+       "label": "favorable",
+       "days": 861,
+       "share": 0.142,
+       "windows": 13,
+       "fwd_1x": 0.022,
+       "net_2x": 0.0338,
+       "gap_2x": -0.001,
+       "net_3x": 0.0456,
+       "gap_3x": -0.0031,
+       "win": 0.605,
+       "p5": -0.226
+      },
+      {
+       "label": "neutral",
+       "days": 924,
+       "share": 0.153,
+       "windows": 14,
+       "fwd_1x": 0.0206,
+       "net_2x": 0.0296,
+       "gap_2x": -0.0011,
+       "net_3x": 0.0383,
+       "gap_3x": -0.0035,
+       "win": 0.58,
+       "p5": -0.3161
+      },
+      {
+       "label": "unfavorable",
+       "days": 1458,
+       "share": 0.241,
+       "windows": 23,
+       "fwd_1x": 0.019,
+       "net_2x": 0.025,
+       "gap_2x": -0.0018,
+       "net_3x": 0.0289,
+       "gap_3x": -0.0057,
+       "win": 0.57,
+       "p5": -0.352
+      },
+      {
+       "label": "very_unfavorable",
+       "days": 1976,
+       "share": 0.326,
+       "windows": 31,
+       "fwd_1x": -0.0007,
+       "net_2x": -0.0137,
+       "gap_2x": -0.0033,
+       "net_3x": -0.029,
+       "gap_3x": -0.0098,
+       "win": 0.429,
+       "p5": -0.3069
+      }
+     ],
+     "vb": {
+      "vol_21": 0.1107,
+      "vol_63": 0.1098,
+      "base_vol": 0.1102,
+      "vr21": 0.7148,
+      "vr63": 0.3987,
+      "eff_vol": 0.0932,
+      "eff_vol_med": 0.1072,
+      "lev_med": 1.1502,
+      "vr21_prev": 0.6265,
+      "eff_vol_prev": 0.0923,
+      "base_vol_prev": 0.1166,
+      "lev_med_prev": 1.1623,
+      "lev": {
+       "15": 1.6098,
+       "30": 3.2196,
+       "45": 4.8294
+      },
+      "lev_prev": {
+       "15": 1.6251,
+       "30": 3.2501,
+       "45": 4.8752
+      },
+      "vr_from": "1996-12-30"
+     },
+     "backtest_from": "2002-07-31"
+    },
+    "BTC-USD": {
+     "name": "Bitcoin",
+     "index": "Bitcoin in US dollars",
+     "breadth_kind": null,
+     "etf_start": "2014-09-17",
+     "asof": "2026-11-21",
+     "rank_start": "2014-12-17",
+     "proxy": null,
+     "proxy_kind": null,
+     "stale": false,
+     "cal": {
+      "kind": "calendar",
+      "dpy": 365,
+      "month": 30,
+      "vol": [
+       30,
+       91
+      ],
+      "mom": [
+       91,
+       365
+      ],
+      "vr_q": 30,
+      "vr_q_long": 91,
+      "vr_window": 730,
+      "vr_se": 0.228,
+      "vr_se_long": 0.404,
+      "min_rank": 730,
+      "horizon": 91,
+      "year": 365
+     },
+     "blend_weight": null,
+     "scale": null,
+     "blend_corr": null,
+     "stale_ac_backfill": null,
+     "stale_ac_etf": null,
+     "score": 80.7,
+     "label": "very_favorable",
+     "score_prev": 91.5,
+     "dd": -0.5183,
+     "score_from": "2018-09-15",
+     "b12w": null,
+     "b3w": null,
+     "b_members": 0,
+     "b_total": 0,
+     "und_1y": -0.2938,
+     "cells": {
+      "eff_vol": {
+       "value": 0.4291,
+       "pct": 19.3,
+       "fav": 80.7,
+       "prev": 0.3457,
+       "q": [
+        0.2597,
+        0.4591,
+        0.6065,
+        0.7982,
+        1.4873
+       ],
+       "n": 3719,
+       "since": "2016-09-16"
+      },
+      "base_vol": {
+       "value": 0.4297,
+       "pct": 23.1,
+       "fav": 76.9,
+       "prev": 0.329,
+       "q": [
+        0.2617,
+        0.4387,
+        0.5732,
+        0.7375,
+        1.3747
+       ],
+       "n": 4358,
+       "since": "2014-12-17"
+      },
+      "vol_21": {
+       "value": 0.457,
+       "pct": 35.8,
+       "fav": 64.2,
+       "prev": 0.2566,
+       "q": [
+        0.1861,
+        0.4029,
+        0.5307,
+        0.7309,
+        1.4542
+       ],
+       "n": 4358,
+       "since": "2014-12-17"
+      },
+      "vol_63": {
+       "value": 0.4006,
+       "pct": 15.9,
+       "fav": 84.1,
+       "prev": 0.3881,
+       "q": [
+        0.287,
+        0.471,
+        0.5854,
+        0.7103,
+        1.2944
+       ],
+       "n": 4358,
+       "since": "2014-12-17"
+      },
+      "vr21": {
+       "value": 0.997,
+       "pct": 26.4,
+       "fav": null,
+       "prev": 1.1043,
+       "q": [
+        0.8024,
+        0.9935,
+        1.077,
+        1.2226,
+        1.5573
+       ],
+       "n": 3719,
+       "since": "2016-09-16"
+      },
+      "vr63": {
+       "value": 0.9383,
+       "pct": 18.2,
+       "fav": null,
+       "prev": 1.0176,
+       "q": [
+        0.632,
+        0.9914,
+        1.2574,
+        1.5078,
+        2.4974
+       ],
+       "n": 3719,
+       "since": "2016-09-16"
+      },
+      "mom_3m": {
+       "value": -0.2204,
+       "pct": 15.7,
+       "fav": 15.7,
+       "prev": 0.2501,
+       "q": [
+        -0.5012,
+        -0.1343,
+        0.0852,
+        0.4097,
+        2.1691
+       ],
+       "n": 4358,
+       "since": "2014-12-17"
+      },
+      "mom_12m": {
+       "value": -0.2938,
+       "pct": 16.5,
+       "fav": 16.5,
+       "prev": -0.2449,
+       "q": [
+        -0.7282,
+        -0.1121,
+        0.6997,
+        1.5628,
+        13.5132
+       ],
+       "n": 4084,
+       "since": "2015-09-17"
+      }
+     },
+     "lev": {
+      "2": {
+       "naive": -0.5875,
+       "gross": -0.5924,
+       "gap": -0.0049,
+       "net": -0.613,
+       "drag": 0.2088
+      },
+      "3": {
+       "naive": -0.8813,
+       "gross": -0.8099,
+       "gap": 0.0714,
+       "net": -0.8271,
+       "drag": 0.6265
+      }
+     },
+     "backtest": [
+      {
+       "label": "very_favorable",
+       "days": 1105,
+       "share": 0.381,
+       "windows": 12,
+       "fwd_1x": 0.119,
+       "net_2x": 0.1689,
+       "gap_2x": -0.0048,
+       "net_3x": 0.1774,
+       "gap_3x": -0.0107,
+       "win": 0.575,
+       "p5": -0.8902
+      },
+      {
+       "label": "favorable",
+       "days": 793,
+       "share": 0.274,
+       "windows": 8,
+       "fwd_1x": 0.0133,
+       "net_2x": -0.0898,
+       "gap_2x": -0.0129,
+       "net_3x": -0.2347,
+       "gap_3x": -0.0396,
+       "win": 0.425,
+       "p5": -0.9978
+      },
+      {
+       "label": "neutral",
+       "days": 450,
+       "share": 0.155,
+       "windows": 4,
+       "fwd_1x": -0.0419,
+       "net_2x": -0.1671,
+       "gap_2x": -0.0213,
+       "net_3x": -0.3338,
+       "gap_3x": -0.0612,
+       "win": 0.38,
+       "p5": -0.8971
+      },
+      {
+       "label": "unfavorable",
+       "days": 429,
+       "share": 0.148,
+       "windows": 4,
+       "fwd_1x": 0.1245,
+       "net_2x": 0.1085,
+       "gap_2x": -0.0289,
+       "net_3x": 0.0035,
+       "gap_3x": -0.1082,
+       "win": 0.501,
+       "p5": -0.8853
+      },
+      {
+       "label": "very_unfavorable",
+       "days": 122,
+       "share": 0.042,
+       "windows": 1,
+       "fwd_1x": -0.013,
+       "net_2x": -0.1408,
+       "gap_2x": -0.0266,
+       "net_3x": -0.3174,
+       "gap_3x": -0.076,
+       "win": 0.451,
+       "p5": -0.8022
+      }
+     ],
+     "vb": {
+      "vol_21": 0.457,
+      "vol_63": 0.4006,
+      "base_vol": 0.4297,
+      "vr21": 0.997,
+      "vr63": 0.9383,
+      "eff_vol": 0.4291,
+      "eff_vol_med": 0.6065,
+      "lev_med": 1.4136,
+      "vr21_prev": 1.1043,
+      "eff_vol_prev": 0.3457,
+      "base_vol_prev": 0.329,
+      "lev_med_prev": 1.7613,
+      "lev": {
+       "15": 0.3496,
+       "30": 0.6992,
+       "45": 1.0488
+      },
+      "lev_prev": {
+       "15": 0.4339,
+       "30": 0.8677,
+       "45": 1.3016
+      },
+      "vr_from": "2016-09-16"
+     },
+     "backtest_from": "2018-09-15"
+    }
    },
-   "EFA": {
-    "EWJ": 22,
-    "EWU": 15,
-    "EWQ": 11,
-    "EWG": 10,
-    "EWL": 9.5,
-    "EWA": 7,
-    "EWN": 5,
-    "EWD": 3.5,
-    "EWP": 3.5,
-    "EWI": 3,
-    "EDEN": 2.5,
-    "EWH": 2,
-    "EWS": 1.7,
-    "EFNL": 1,
-    "EWK": 1,
-    "EIS": 1,
-    "ENOR": 0.7,
-    "EIRL": 0.3,
-    "EWO": 0.2,
-    "ENZL": 0.2
-   },
-   "EEM": {
-    "FXI": 28,
-    "EWT": 19,
-    "INDA": 17,
-    "EWY": 12,
-    "EWZ": 4.5,
-    "KSA": 3.5,
-    "EZA": 3.5,
-    "EWW": 2,
-    "UAE": 1.5,
-    "EWM": 1.3,
-    "EIDO": 1.2,
-    "EPOL": 1,
-    "THD": 1,
-    "KWT": 0.7,
-    "QAT": 0.7,
-    "TUR": 0.5,
-    "GREK": 0.5,
-    "ECH": 0.5,
-    "EPHE": 0.4,
-    "EPU": 0.3
+   "order": [
+    "GLD",
+    "IEF",
+    "TLT",
+    "BTC-USD"
+   ],
+   "metrics": [
+    {
+     "key": "eff_vol",
+     "label": "Effective volatility",
+     "fmt": "pct",
+     "higher_better": false,
+     "core": true
+    },
+    {
+     "key": "base_vol",
+     "label": "Volatility, blended 1- and 3-month",
+     "fmt": "pct",
+     "higher_better": false,
+     "core": true
+    },
+    {
+     "key": "vol_21",
+     "label": "Volatility, 1-month",
+     "fmt": "pct",
+     "higher_better": false,
+     "core": true
+    },
+    {
+     "key": "vol_63",
+     "label": "Volatility, 3-month",
+     "fmt": "pct",
+     "higher_better": false,
+     "core": true
+    },
+    {
+     "key": "vr21",
+     "label": "Variance ratio, 1-month (trend persistence)",
+     "fmt": "num",
+     "higher_better": null,
+     "core": true
+    },
+    {
+     "key": "vr63",
+     "label": "Variance ratio, 3-month (context only)",
+     "fmt": "num",
+     "higher_better": null,
+     "core": false
+    },
+    {
+     "key": "mom_3m",
+     "label": "3-month momentum",
+     "fmt": "pct",
+     "higher_better": true,
+     "core": false
+    },
+    {
+     "key": "mom_12m",
+     "label": "12-month momentum",
+     "fmt": "pct",
+     "higher_better": true,
+     "core": false
+    }
+   ],
+   "config": {
+    "mom": [
+     63,
+     252
+    ],
+    "vol": [
+     21,
+     63
+    ],
+    "vr_q": 21,
+    "vr_q_long": 63,
+    "vr_window": 504,
+    "vr_se": 0.227,
+    "vr_se_long": 0.403,
+    "budgets": [
+     15,
+     30,
+     45
+    ],
+    "caps": [
+     2.0,
+     2.5,
+     3.0
+    ],
+    "min_rank": 504,
+    "history_start": "1998-01-01",
+    "leverage": [
+     2,
+     3
+    ],
+    "spread": 0.005,
+    "fee": 0.0095,
+    "cuts": [
+     20.0,
+     40.0,
+     60.0,
+     80.0
+    ],
+    "ref_lines": [
+     20,
+     50,
+     80
+    ],
+    "levels": [
+     {
+      "key": "very_favorable",
+      "name": "Very favorable"
+     },
+     {
+      "key": "favorable",
+      "name": "Favorable"
+     },
+     {
+      "key": "neutral",
+      "name": "Neutral"
+     },
+     {
+      "key": "unfavorable",
+      "name": "Unfavorable"
+     },
+     {
+      "key": "very_unfavorable",
+      "name": "Very unfavorable"
+     }
+    ],
+    "horizon": 63,
+    "breadth_min": 5,
+    "breadth": {}
    }
   }
  }
