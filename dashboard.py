@@ -135,7 +135,7 @@ ASSETS = {
 # note if their data is missing or stale.
 GROUPS = {
     "equity": {"title": "Equities", "page": "index.html", "report": "report.html",
-               "assets": ["SPY", "EFA", "EEM"]},
+               "assets": ["SPY", "EFA", "EEM"], "mom_shade": True},   # shade favorability charts by 12m momentum vs T-bills
     "other": {"title": "Gold, Treasuries and Bitcoin", "page": "other.html", "report": "other-report.html",
               "assets": ["GLD", "IEF", "TLT", "BTC-USD"]},
 }
@@ -577,6 +577,9 @@ def build(px: pd.DataFrame, notes: list[str], synthetic: bool) -> dict:
         f["ret"] = ret
         f["dd"] = price / price.cummax() - 1.0         # drawdown from the highest prior close
         f["und_1y"] = compound(ret, Y)
+        # 12-month momentum against cash: total return minus what T-bills earned over the same 12 months.
+        f["tb_12m"] = compound(cash_a / dpy, ci["mom"][1])
+        f["mom_x12"] = f["mom_12m"] - f["tb_12m"]
         f["fwd_1x"] = compound(ret, H).shift(-H)
         for lev in LEVERAGE:
             gross = leveraged_returns(ret, lev, per_year=dpy)
@@ -727,10 +730,11 @@ def make_payload(res: dict, notes: list[str], synthetic: bool, group: str) -> di
                      "lev_prev": {str(b): _num(_ago(f[f"lev_{b}"], M)) for b in budgets},
                      "vr_from": str(f["vr21"].first_valid_index().date()) if f["vr21"].notna().any() else None},
             "backtest_from": str(ef.index[0].date()) if len(ef) else None,
+            "mom_state": _mom_state(f),
         }
 
     # Weekly samples (last observation of each week) keep the page small.
-    keys = ["score", "eff_vol", "base_vol", "vol_21", "vol_63", "vr21", "vr63", "lev_med"] \
+    keys = ["score", "eff_vol", "base_vol", "vol_21", "vol_63", "vr21", "vr63", "lev_med", "mom_x12"] \
         + [f"lev_{round(b * 100)}" for b in VOL_BUDGETS]
     dates, series = _weekly_group(frames, order, [(k, 4, "last") for k in keys] + [("dd", 4, "min")])
     series["dates"] = dates
@@ -755,10 +759,28 @@ def make_payload(res: dict, notes: list[str], synthetic: bool, group: str) -> di
                    "leverage": list(LEVERAGE), "spread": FINANCING_SPREAD, "fee": EXPENSE_RATIO,
                    "cuts": list(SCORE_CUTS), "ref_lines": list(SCORE_REF_LINES),
                    "levels": [{"key": k, "name": n} for k, n in LEVELS],
-                   "horizon": BACKTEST_HORIZON,
+                   "horizon": BACKTEST_HORIZON, "mom_shade": bool(g.get("mom_shade")),
                    "breadth_min": BREADTH_MIN_MEMBERS,
                    "breadth": {a: ASSETS[a]["breadth"] for a in order if ASSETS[a]["breadth"]}},
     }
+
+
+def _mom_state(f: pd.DataFrame) -> dict:
+    """Favorability split by whether 12-month momentum is beating T-bills, over days with both."""
+    x = f["mom_x12"].dropna()
+    now = bool(x.iloc[-1] > 0) if len(x) else None
+    flips = x.index[(x > 0) != (x > 0).shift()] if len(x) else []
+    rows = []
+    g = f.dropna(subset=["score", "mom_x12"])
+    for state, part in (("beating", g[g["mom_x12"] > 0]), ("not", g[g["mom_x12"] <= 0])):
+        row = {"state": state, "days": int(len(part)), "share": _num(len(part) / max(len(g), 1), 3)}
+        if len(part):
+            row.update(median=_num(part["score"].median(), 1), mean=_num(part["score"].mean(), 1),
+                       levels={k: _num((part["label"] == k).mean(), 3) for k in LEVEL_KEYS},
+                       lev_30=_num(part["lev_30"].median(), 2), lev_med=_num(part["lev_med"].median(), 2))
+        rows.append(row)
+    return {"now": now, "since": str(flips[-1].date()) if len(flips) else None,
+            "from": str(g.index[0].date()) if len(g) else None, "rows": rows}
 
 
 def _fwd_stats(g: pd.DataFrame, top: int) -> dict:
@@ -1169,6 +1191,18 @@ function bindRange(draw) {
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
 }
 const rgba = (hex, al) => { const h = hex.replace("#", ""); return "rgba(" + [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)).join(",") + "," + al + ")"; };
+// Weekly runs when 12-month momentum is not beating T-bills, as [start, end] date pairs.
+function momRuns(a) {
+  const d = D.series.dates, x = D.series[a].mom_x12, out = [];
+  let s = null;
+  x.forEach((v, j) => {
+    const off = v != null && v <= 0;
+    if (off && s == null) s = j > 0 ? d[j - 1] : d[j];
+    if (!off && s != null) { out.push([s, d[j - 1]]); s = null; }
+  });
+  if (s != null) out.push([s, d[d.length - 1]]);
+  return out;
+}
 // One ETF: favorability on top, drawdown beneath, on a shared time axis (two panels, not two scales on one).
 function plotScoreDrawdown(id, a) {
   const [x0, x1] = xRange(), ink2 = css("--ink2"), grid = css("--grid"), axis = css("--axis"), band = css("--band"), col = css(COLOR[a]);
@@ -1178,6 +1212,8 @@ function plotScoreDrawdown(id, a) {
   C.ref_lines.forEach((v) => shapes.push({ type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: v, y1: v, line: { color: css("--crit"), width: 1.2 }, layer: "above" }));
   const start = D.assets[a].proxy ? D.assets[a].etf_start : null;
   if (start && start > x0) shapes.push({ type: "rect", xref: "x", yref: "paper", x0: x0, x1: start, y0: 0, y1: 1, fillcolor: band, line: { width: 0 }, layer: "below" });
+  if (C.mom_shade && window.MOM_SHADE_ON !== false && D.series[a].mom_x12) momRuns(a).forEach(([s0, s1]) =>
+    shapes.push({ type: "rect", xref: "x", yref: "paper", x0: s0, x1: s1, y0: 0, y1: 1, fillcolor: rgba(css("--crit"), 0.11), line: { width: 0 }, layer: "below" }));
   const yax = { gridcolor: grid, zeroline: false, fixedrange: !CAN_ZOOM, title: { font: { size: 11, color: ink2 }, standoff: 6 } };
   Plotly.react(id, [
     { x: dates, y: D.series[a].score, name: "Score", mode: "lines", line: { color: col, width: 1.6 }, yaxis: "y", hovertemplate: "%{y:.0f}<extra>Favorability</extra>" },
@@ -1330,6 +1366,7 @@ ${A.map(backfill).join("\n")}
 <ul>
 <li>Drawdown is measured on total-return prices from the highest prior close in the data, plotted as the worst close of each week.</li>
 <li>Favorability falls as a drawdown deepens largely because volatility rises with the decline itself. That is measurement, not early warning: what matters is where favorability stood before a decline began.</li>
+` + (C.mom_shade ? `<li>Red shading on the favorability charts marks weeks when the ETF's 12-month total return was at or below the return on T-bills (the ${esc(D.cash_note)}, compounded daily) over the same 12 months. It is a simple absolute-momentum reference for context, not your own momentum rule, and it is weekly, so it can lag a crossing by a few days. The table beneath the charts summarizes favorability in each state.</li>` : "") + `
 </ul>
 
 <h3>Momentum${C.breadth && Object.keys(C.breadth).length ? " and breadth" : ""} (detail report only)</h3>
@@ -1370,6 +1407,7 @@ Momentum and every result in full are in the <a class="rep" href="report.html">d
 <div class="legend" id="legend"></div>
 <p class="small" id="shade-note"></p>
 <div id="ddcharts"></div>
+<div id="momwrap"></div>
 
 <h2 id="vb">Leverage from a volatility budget</h2>
 <p class="sub">The leverage that would hold a position's risk at a chosen budget:
@@ -1516,6 +1554,29 @@ const CHARTS = [
 ];
 $("legend").innerHTML = legendHtml();
 $("shade-note").textContent = shadeNote();
+// ---- 12-month momentum against T-bills (shading on the favorability charts) -----
+if (C.mom_shade) {
+  window.MOM_SHADE_ON = true;
+  $("shade-note").insertAdjacentHTML("afterend", '<div class="ctl"><span>Show</span><div class="tog"><button id="momtog" aria-pressed="true">' +
+    '<i class="sw" style="background:' + rgba(css("--crit"), 0.25) + ';margin-right:6px"></i>12-month momentum not beating T-bills</button></div>' +
+    '<span class="small">Red shading marks weeks when the ETF\'s 12-month total return was at or below what T-bills earned over the same 12 months. Select to hide or show.</span></div>');
+  $("momtog").addEventListener("click", () => {
+    window.MOM_SHADE_ON = !window.MOM_SHADE_ON; $("momtog").setAttribute("aria-pressed", String(window.MOM_SHADE_ON));
+    if (window.Plotly) A.forEach((a) => plotScoreDrawdown("dd" + a, a));
+  });
+  const lv = (r, ks) => r.levels ? pct(ks.reduce((t, k) => t + (r.levels[k] || 0), 0), 0) : "n/a";
+  $("momwrap").innerHTML = '<h3>Favorability when 12-month momentum is and is not beating T-bills</h3>' +
+    '<p class="small">Days since favorability began for each ETF, split by whether its 12-month total return was above the T-bill return over the same 12 months. ' +
+    "Implied leverage figures are uncapped medians. This describes how the two have lined up; it is not a test of either.</p>" +
+    '<div class="scroll"><table><thead><tr><th>ETF</th><th>12-month momentum vs T-bills</th><th class="n">Share of days</th><th class="n">Median favorability</th>' +
+    '<th class="n">Favorable or better</th><th class="n">Neutral</th><th class="n">Unfavorable or worse</th><th class="n">Median leverage at 30% budget</th><th class="n">Median leverage at own median</th></tr></thead><tbody>' +
+    A.map((a) => { const m = D.assets[a].mom_state; return m.rows.map((r, i) => "<tr>" +
+      (i ? "" : '<td class="nw" rowspan="2"><strong>' + a + '</strong><div class="small">from ' + (m.from || "n/a") + "<br>now " + (m.now == null ? "n/a" : m.now ? "beating" : "not beating") +
+        (m.since ? " since " + m.since : "") + "</div></td>") +
+      "<td>" + (r.state === "beating" ? "Beating T-bills" : "Not beating T-bills") + '</td><td class="n">' + pct(r.share, 0) + '</td><td class="n">' + (r.median == null ? "n/a" : r.median.toFixed(0)) +
+      '</td><td class="n">' + lv(r, ["very_favorable", "favorable"]) + '</td><td class="n">' + lv(r, ["neutral"]) + '</td><td class="n">' + lv(r, ["unfavorable", "very_unfavorable"]) +
+      '</td><td class="n">' + xf(r.lev_30) + '</td><td class="n">' + xf(r.lev_med) + "</td></tr>").join(""); }).join("") + "</tbody></table></div>";
+}
 $("charts").innerHTML = CHARTS.map((c, i) => '<div class="chart"><h3>' + c.title + "</h3><p>" + c.note + '</p><div class="plot" id="pl' + i + '"></div></div>').join("");
 
 // ---- volatility-budget leverage ------------------------------------------
