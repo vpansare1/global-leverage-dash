@@ -47,6 +47,15 @@ def test_leverage_compounding_against_hand_calculation():
     assert lev < 3 * und
 
 
+def test_wipeout_is_permanent():
+    ret = pd.Series([0.0, -0.37, 0.5, 0.5, 0.5, 0.0], IDX[:6])        # a 37% fall, then a rally
+    lev = d.leveraged_returns(ret, 3)                                   # -111% on the bad day
+    c = d.compound(lev, 3)
+    assert c.iloc[2] == -1.0 and c.iloc[3] == -1.0                      # every window holding that day
+    assert c.iloc[5] == pytest.approx(2.5 ** 2 - 1)                      # windows after it are unaffected
+    assert d.compound(d.leveraged_returns(ret, 2), 3).iloc[3] == pytest.approx(0.26 * 2 * 2 - 1)
+
+
 def test_financing_cost_and_fee_are_charged():
     flat = pd.Series([0.0] * 252, IDX[:252])
     net = d.compound(d.leveraged_returns(flat, 3, cash_rate=0.04, spread=0.005, fee=0.0095), 252).iloc[-1]

@@ -246,8 +246,14 @@ def expanding_median(s: pd.Series, min_obs: int = MIN_RANK_OBS) -> pd.Series:
 
 
 def compound(ret: pd.Series, days: int) -> pd.Series:
-    """Compounded return over a rolling window of daily returns."""
-    return np.expm1(np.log1p(ret.clip(lower=-0.999)).rolling(days).sum())
+    """Compounded return over a rolling window of daily returns.
+
+    A daily return of -100% or worse wipes the position out for good: any window that
+    contains one returns exactly -100%, however the remaining days went.
+    """
+    growth = np.expm1(np.log1p(ret.clip(lower=-0.999)).rolling(days).sum())
+    wiped = (ret <= -1.0).astype(float).rolling(days).max() > 0
+    return growth.mask(wiped, -1.0)
 
 
 def leveraged_returns(ret: pd.Series, lev: float, cash_rate: pd.Series | float = 0.0,
@@ -696,6 +702,7 @@ def make_payload(res: dict, notes: list[str], synthetic: bool, group: str) -> di
                 top = LEVERAGE[-1]
                 row["win"] = _num((g[f"fwd_net_{top}x"] > 0).mean(), 3)
                 row["p5"] = _num(g[f"fwd_net_{top}x"].quantile(0.05))
+                row["ruin"] = _num((g[f"fwd_net_{top}x"] <= -1.0).mean(), 4)
             backtest.append(row)
         budgets = [round(b * 100) for b in VOL_BUDGETS]
         assets[a] = {
@@ -1069,7 +1076,8 @@ td .tkr{display:flex;align-items:center;gap:7px;font-weight:650;white-space:nowr
 JS_COMMON = r'''const $ = (id) => document.getElementById(id);
 const C = D.config, A = D.order;
 const pct = (x, d = 1) => x == null ? "n/a" : (x * 100).toFixed(d) + "%";
-const spct = (x, d = 1) => x == null ? "n/a" : (x > 0 ? "+" : "") + (x * 100).toFixed(d) + "%";
+// A simulated return of -100% means the daily-reset fund was wiped out (a one-day fall of 1/L or more).
+const spct = (x, d = 1) => x == null ? "n/a" : x <= -0.99995 ? "\u2212100% (wiped out)" : (x > 0 ? "+" : "") + (x * 100).toFixed(d) + "%";
 const num = (x, d = 2) => x == null ? "n/a" : x.toFixed(d);
 const ord = (n) => { n = Math.round(n); const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
 const fmtv = (m, x, signed) => m.fmt === "pct" ? (signed ? spct(x) : pct(x)) : num(x);
@@ -1233,7 +1241,7 @@ const backfill = (a) => { const d = D.assets[a];
     ", fitted to " + a + "'s monthly returns over the first five years of overlap" + corr + ".</li>";
   if (d.proxy_kind === "scaled") return "<li>" + a + " began trading on " + d.etf_start + ". Earlier returns come from the " + nm[0] + " fund, with its daily returns multiplied by " +
     num(d.scale) + " so that its monthly returns best match " + a + "'s over the first five years of overlap" + corr + ". The scale bridges the difference in interest-rate sensitivity " +
-    "(duration) between the fund and the ETF; the fund's maturity mix drifted over time, so the match is approximate. Treasury fund prices are struck at the US close, so there is no stale-pricing " +
+    "(duration) between the fund and the ETF. It is a least-squares fit with no intercept, and it multiplies the fund's interest income as well as its price moves, so backfilled drawdowns and momentum are approximate too; the fund's maturity mix also drifted over time. Treasury fund prices are struck at the US close, so there is no stale-pricing " +
     "problem and the variance ratio uses the backfilled era.</li>";
   return "<li>" + a + " began trading on " + d.etf_start + ". Earlier returns come from the " + nm[0] + " fund, which then tracked a related index, close to but not the same as " + a + "'s.</li>"; };
 const shiftEx = EQ ? "A market whose normal volatility has changed for good, for example as a market matured or its make-up changed, is judged partly against an era that no longer applies."
@@ -1256,6 +1264,7 @@ $("doc").innerHTML = `
 <ul>
 <li>The variance of a return over a holding period of H days is H &times; daily variance &times; VR_H, where VR_H is the variance ratio at that horizon. In volatility terms: <strong>effective volatility = volatility measured from daily returns &times; &radic;VR_H</strong>. H is one month (${tdays(C.vr_q)}), matching sleeves rebalanced monthly. This is the risk a position held for a month actually carries; leverage multiplies it.</li>
 <li>Volatility from daily returns is the root-mean-square of the 1-month and 3-month annualized readings (${C.vol[0]} and ${C.vol[1]} trading days${CALA.length ? "; " + calDays(C.vol[0]) + " and " + calDays(C.vol[1]) + " calendar days for " + listAnd(CALA) : ""}), so it reacts within weeks. It is backward-looking realized volatility, not a forecast, and it can jump faster than any window registers.</li>
+<li>The two windows get equal weight in variance terms. That is the simplest blend and was not fitted to past outcomes. Because variances are averaged, whichever window is higher dominates: the 1-month reading takes over when volatility jumps, and the 3-month reading holds the measure up for a while after it subsides.</li>
 <li>The variance ratio is the variance of overlapping one-month returns divided by the number of days in the month times the variance of daily returns, using the Lo&ndash;MacKinlay bias-corrected, demeaned estimator over about two years (${tdays(C.vr_window)}), so it moves slowly. Even so it is noisy: its standard error is about &plusmn;${num(C.vr_se)} when returns are independent, and larger when volatility clusters, which moves effective volatility by roughly &plusmn;${Math.round(C.vr_se * 50)}%. Volatility itself cancels out of the ratio; it measures only how daily moves add up.</li>
 <li>Annualized effective volatility is monthly risk expressed on an annual scale (monthly volatility &times; &radic;12). It is not a statement about the variability of a full year's return.</li>
 <li>No momentum or return forecast enters the measure. Volatility and serial correlation are each counted once.</li>
@@ -1264,7 +1273,8 @@ $("doc").innerHTML = `
 <h3>Favorability and the five levels</h3>
 <ul>
 <li>Favorability = 100 minus the point-in-time percentile of effective volatility against the asset's own history: 100 is the calmest the asset has been, 0 the most turbulent. Each past day is ranked only against data that existed on that day, with at least two years of observations required, so favorability starts ${starts}.</li>
-<li>Five levels with equal shares of history: very favorable at ${C.cuts[3]} or above, favorable from ${C.cuts[2]}, neutral between ${C.cuts[1]} and ${C.cuts[2]}, unfavorable at ${C.cuts[1]} or below, very unfavorable at ${C.cuts[0]} or below. Because the levels are quintiles of the asset's own history, they make no claim of equal risk and involve no fitting.</li>
+<li>Five levels cut at the quintiles of the percentile: very favorable at ${C.cuts[3]} or above, favorable from ${C.cuts[2]}, neutral between ${C.cuts[1]} and ${C.cuts[2]}, unfavorable at ${C.cuts[1]} or below, very unfavorable at ${C.cuts[0]} or below. They make no claim of equal risk and involve no fitting.</li>
+<li><strong>The levels do not hold equal shares of days.</strong> Each day is ranked against the history that existed on that day, so the shares would be equal only if volatility had no lasting trend. An asset whose volatility has drifted up spends more of its later history in the unfavorable levels, and one whose volatility has drifted down (bitcoin, for example) more in the favorable ones. The "Share of days" column in the point-in-time check shows the actual split.</li>
 <li>Because the measure is relative to each asset's own history, the same level on two assets does not mean the same absolute risk: ${EQ ? "EEM at a favorable level can still be more volatile than SPY at an unfavorable one" : "bitcoin at a favorable level is still several times as volatile as intermediate Treasuries at an unfavorable one"}. Absolute risk is in the effective-volatility figure and the implied-leverage grid.</li>
 <li>Red lines on the favorability charts at ${C.ref_lines.join(", ")} are visual reference levels only.</li>
 </ul>
@@ -1330,8 +1340,10 @@ ${A.map(backfill).join("\n")}
 
 <h3>Leverage simulation and point-in-time check</h3>
 <ul>
-<li>Each day the simulated fund earns L times the asset's total return. After costs it also pays the cash rate plus ${(C.spread * 100).toFixed(2)}% on the borrowed (L-1) portion and a ${(C.fee * 100).toFixed(2)}% annual fee; the cash rate is the ${esc(D.cash_note)}, currently ${pct(D.cash_now, 2)}. Not modelled: intraday moves, tracking error, widening swap spreads, fund closures, and the fact that a 3x fund is wiped out by a single-day fall of about 33%.${EQ ? "" : " For Treasuries the financing cost matters most: a levered Treasury position earns roughly L times the bond's return minus the cash rate and spread on the borrowed part, so when short rates are at or above bond yields the carry is negative."}</li>
+<li>Each day the simulated fund earns L times the asset's total return. After costs it also pays the cash rate plus ${(C.spread * 100).toFixed(2)}% on the borrowed (L-1) portion and a ${(C.fee * 100).toFixed(2)}% annual fee; the cash rate is the ${esc(D.cash_note)}, currently ${pct(D.cash_now, 2)}. <strong>A single-day fall of 1/L or more (about 33% at 3x, 50% at 2x) wipes a daily-reset fund out for good</strong>: any period that contains such a day is shown as &minus;100% (wiped out), and the point-in-time check counts how often that happened. Not modelled: intraday moves (which can wipe a fund out on a smaller close-to-close fall), tracking error, widening swap spreads and fund closures.</li>
+<li><strong>The same costs apply to every asset, which understates them for some.</strong> Leveraged bitcoin funds charge more (around 1.85% a year) and pay futures or swap funding that has often run well above the T-bill rate; leveraged gold funds hold futures, whose roll costs are not modelled either. Treat simulated leveraged returns for bitcoin and gold as optimistic.${EQ ? "" : " For Treasuries the financing cost matters most: a levered Treasury position earns roughly L times the bond's return minus the cash rate and spread on the borrowed part, so when short rates are at or above bond yields the carry is negative."}</li>
 <li>The check uses only dates when favorability exists, with levels as they stood on each date, and looks ${tdays(C.horizon)} ahead. Adjacent days share almost all of their forward window, so the independent-period count is the honest sample size. The sample contains only a handful of major bear markets, and those few episodes dominate the unfavorable rows. Past simulated results do not indicate future results.</li>
+<li>Look at whether the worst-5% column gets steadily worse from very favorable to very unfavorable. Where it does not, or the independent-period counts are small, treat favorability as a description of current conditions rather than as protection that has held up in the past.</li>
 </ul>` + (extra || "");
 $("foot").textContent = "Generated " + D.generated + " · data through " + D.asof + " · source: Yahoo Finance via yfinance";
 }
@@ -1481,14 +1493,16 @@ $("grid").innerHTML = "<thead><tr><th>Metric</th>" + A.map((a) => "<th>" + a + "
 $("bt-intro").textContent = "For every past day, the level was computed using only data available on that day, then compared with what a simulated " +
   "daily-reset fund did over the following " + tdays(C.horizon) + ". If favorability is useful, risk should fall step by step from very unfavorable to very favorable: " +
   "watch the worst-5% and compounding columns more than the medians. Windows overlap heavily, so the last column gives the rough count of independent periods.";
+const RUIN = A.some((a) => D.assets[a].backtest.some((r) => r.ruin > 0));
 $("bt").innerHTML = '<thead><tr><th>Asset</th><th>Level</th><th class="n">Share of days</th><th class="n">Median 1x</th>' +
   C.leverage.map((L) => '<th class="n">Median ' + L + "x after costs</th>").join("") +
-  '<th class="n">Median ' + TOP + 'x compounding effect</th><th class="n">' + TOP + 'x positive</th><th class="n">' + TOP + 'x worst 5%</th><th class="n">Independent periods</th></tr></thead><tbody>' +
+  '<th class="n">Median ' + TOP + 'x compounding effect</th><th class="n">' + TOP + 'x positive</th><th class="n">' + TOP + 'x worst 5%</th>' + (RUIN ? '<th class="n">' + TOP + 'x wiped out</th>' : "") + '<th class="n">Independent periods</th></tr></thead><tbody>' +
   A.map((a) => D.assets[a].backtest.map((r, i) => "<tr>" +
     (i ? "" : '<td class="nw" rowspan="' + LEVELS.length + '"><strong>' + a + '</strong><div class="small">from ' + (D.assets[a].backtest_from || "n/a") + "</div></td>") +
     '<td class="nw"><span class="ico ' + r.label + '">' + ICON[r.label] + "</span> " + lname(r.label) + '</td><td class="n">' + pct(r.share, 0) + '</td><td class="n">' + spct(r.fwd_1x) + "</td>" +
     C.leverage.map((L) => '<td class="n">' + spct(r["net_" + L + "x"]) + "</td>").join("") +
-    '<td class="n">' + spct(r["gap_" + TOP + "x"]) + '</td><td class="n">' + pct(r.win, 0) + '</td><td class="n">' + spct(r.p5) + '</td><td class="n">' + r.windows + "</td></tr>").join("")).join("") + "</tbody>";
+    '<td class="n">' + spct(r["gap_" + TOP + "x"]) + '</td><td class="n">' + pct(r.win, 0) + '</td><td class="n">' + spct(r.p5) + "</td>" + (RUIN ? '<td class="n">' + (r.ruin == null ? "n/a" : pct(r.ruin, r.ruin > 0 && r.ruin < 0.01 ? 2 : 0)) + "</td>" : "") +
+    '<td class="n">' + r.windows + "</td></tr>").join("")).join("") + "</tbody>";
 
 // ---- history charts -------------------------------------------------------
 const CHARTS = [

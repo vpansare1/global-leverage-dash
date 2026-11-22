@@ -26,8 +26,10 @@ volatility, a 30-day variance ratio over 730 days) and annualize with 365 days. 
 other assets use trading days and 252. Both cover the same spans of time.
 
 **Favorability** = 100 minus the point-in-time percentile of effective volatility
-against the asset's own history, shown as five equal-frequency levels (very favorable
-to very unfavorable). "Own history" is an expanding window: everything from 1998 (or
+against the asset's own history, shown as five levels cut at its quintiles (very
+favorable to very unfavorable). Because each day is ranked against the history that
+existed then, the levels do not hold equal shares of days when volatility has a
+lasting trend. "Own history" is an expanding window: everything from 1998 (or
 the asset's first data) up to each date. A lasting shift in an asset's normal
 volatility, such as bitcoin's long decline or Treasuries' rise since 2022, is not
 absorbed; the pages carry a caution about this.
@@ -143,5 +145,10 @@ index-weighted breadth figure.
   returns scaled to match each ETF's interest-rate sensitivity; Treasury funds are
   not stale-priced, so their variance ratio is used. GLD and bitcoin are not
   backfilled.
+- **Leveraged simulations treat a wipeout as permanent:** a one-day fall of 1/L or
+  more (about 33% at 3x) sets every period containing it to -100%. Bitcoin had such a
+  day on 12 March 2020.
+- **Costs are the same for every asset** (T-bill + 0.5% on the borrowed part and a
+  0.95% fee), which understates them for leveraged bitcoin and gold funds.
 - **Percentiles are point-in-time** everywhere, so today's reading and the
   historical check use the same calculation.
